@@ -3,17 +3,27 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
+    "lint": "eslint .",
     "build": "vite build",
     "preview": "vite preview"
   },
   "devDependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
+    "@eslint/js": "^9.39.4",
     "@vitejs/plugin-react": "^5.1.4",
     "autoprefixer": "10.4.19",
     "babel-plugin-macros": "^3.1.0",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "globals": "^15.15.0",
     "postcss": "8.4.49",
     "tailwindcss": "3.4.13",
     "twin.macro": "^3.4.1",
