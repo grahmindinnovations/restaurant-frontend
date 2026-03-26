@@ -29,7 +29,7 @@ const LowStockAlerts = lazy(() => import('../components/admin/inventory/LowStock
 const Analytics = lazy(() => import('../components/admin/analytics/Analytics'))
 const Notifications = lazy(() => import('../components/admin/notifications/Notifications'))
 const Settings = lazy(() => import('../components/admin/settings/Settings'))
-const Logs = lazy(() => import('../components/admin/logs/Logs'))
+const Logs = lazy(() => import('../components/admin/logs/Logs.jsx'))
 const POSIntegration = lazy(() => import('../components/admin/integration/POS'))
 const KDSIntegration = lazy(() => import('../components/admin/integration/KDS'))
 const PaymentsIntegration = lazy(() => import('../components/admin/integration/Payments'))
