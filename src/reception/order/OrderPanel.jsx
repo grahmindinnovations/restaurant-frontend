@@ -3,7 +3,7 @@ import { Select } from '../../components/ui/select'
 import { Trash2, Minus, Plus } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-export default function OrderPanel({ cart, onInc, onDec, onRemove, gstRate=0.05, serviceChargeRate=0, onAction, orderId, diningType, onDiningChange, table, onTableChange, onPlaceOrder, tables }){
+export default function OrderPanel({ cart, onInc, onDec, onRemove, gstRate=0.05, orderId, diningType, onDiningChange, table, onTableChange, onPlaceOrder, tables }){
   const subTotal = cart.reduce((s,i)=>s+i.qty*i.price,0)
   const [enableServiceTax, setEnableServiceTax] = useState(false)
 

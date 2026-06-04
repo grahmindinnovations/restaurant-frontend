@@ -9,7 +9,7 @@ import Topbar from './Topbar'
 export default function AdminLayout() {
   const [loading, setLoading] = useState(true)
   const [adminUser, setAdminUser] = useState(null)
-  const [error, setError] = useState(null)
+  const [_error, setError] = useState(null)
   const location = useLocation()
 
   useEffect(() => {
@@ -39,7 +39,9 @@ export default function AdminLayout() {
         setError('You are not authorized as admin.')
         try {
           await signOut(a)
-        } catch {}
+        } catch {
+          /* ignore sign-out errors */
+        }
       } finally {
         setLoading(false)
       }

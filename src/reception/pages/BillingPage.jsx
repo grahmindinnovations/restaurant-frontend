@@ -8,7 +8,6 @@ import { printBill } from '../utils/printBill'
 
 export default function BillingPage() {
   const [orders, setOrders] = useState([])
-  const [socket, setSocket] = useState(null)
   const [currentTime, setCurrentTime] = useState(new Date())
 
   useEffect(() => {
@@ -20,15 +19,14 @@ export default function BillingPage() {
       })
       .catch(err => console.error('Error fetching orders:', err))
 
-    const newSocket = io()
-    setSocket(newSocket)
+    const socket = io()
 
-    newSocket.on('orders:update', (updatedOrders) => {
+    socket.on('orders:update', (updatedOrders) => {
       const activeOrders = updatedOrders.filter(o => o.status !== 'draft')
       setOrders(activeOrders)
     })
 
-    return () => newSocket.close()
+    return () => socket.close()
   }, [])
 
   useEffect(() => {

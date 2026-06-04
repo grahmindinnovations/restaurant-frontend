@@ -39,6 +39,7 @@ export default function Portal() {
   const roleId = parseRoleId(params.role)
   const [user, setUser] = useState(null)
   const [checking, setChecking] = useState(true)
+  const [notice, setNotice] = useState(null)
 
   const meta = useMemo(() => (roleId ? roleMeta[roleId] : null), [roleId])
 
@@ -64,10 +65,7 @@ export default function Portal() {
         const res = await apiFetch(`/api/roles/${encodeURIComponent(roleId)}/access`)
         if (!res.allowed) {
           await signOut(a)
-          const msg = `Access denied. ${meta?.title || 'This role'} requires different credentials.`
-          try {
-            window.alert(msg)
-          } catch {}
+          setNotice(`Access denied. ${meta?.title || 'This role'} requires different credentials.`)
           setUser(null)
           setChecking(false)
           navigate(`/login?role=${encodeURIComponent(roleId)}`, { replace: true })
@@ -130,6 +128,11 @@ export default function Portal() {
         </TopBar>
 
         <Card>
+          {notice && (
+            <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+              {notice}
+            </div>
+          )}
           <CardTitle>Welcome back!</CardTitle>
           <CardText>
             You are logged in as {user?.email}. This is the {meta.title} dashboard.

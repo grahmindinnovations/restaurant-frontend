@@ -17,7 +17,7 @@ export default function ScheduleModal({ isOpen, onClose, onSave, config, setConf
       }
     >
       <div className="p-4 bg-slate-50 rounded-lg text-sm text-slate-600 mb-2">
-        Set the operating hours for the kitchen. The system will automatically mark the kitchen as 'Offline' outside these hours.
+        Set the operating hours for the kitchen. The system will automatically mark the kitchen as &apos;Offline&apos; outside these hours.
       </div>
       <div className="grid grid-cols-2 gap-4">
         <FormGroup>

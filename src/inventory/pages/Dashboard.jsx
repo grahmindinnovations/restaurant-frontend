@@ -73,10 +73,8 @@ export default function Dashboard() {
     ]
   }, [dashboard])
 
-  const stockByCategoryRaw = Array.isArray(dashboard?.stockByCategory) ? dashboard.stockByCategory : []
-  const recentActivityRaw = Array.isArray(dashboard?.recentActivity) ? dashboard.recentActivity : []
-
   const stockByCategory = useMemo(() => {
+    const stockByCategoryRaw = Array.isArray(dashboard?.stockByCategory) ? dashboard.stockByCategory : []
     return stockByCategoryRaw
       .map((x) => {
         const category = String(x?.category || '')
@@ -86,9 +84,10 @@ export default function Dashboard() {
         return { category, activeStock, deletedStock, totalStock }
       })
       .filter((x) => x.category)
-  }, [stockByCategoryRaw])
+  }, [dashboard?.stockByCategory])
 
   const recentActivity = useMemo(() => {
+    const recentActivityRaw = Array.isArray(dashboard?.recentActivity) ? dashboard.recentActivity : []
     return recentActivityRaw.map((x) => {
       const type = String(x?.type || 'stock')
       const icon =
@@ -109,7 +108,7 @@ export default function Dashboard() {
         iconTint,
       }
     })
-  }, [recentActivityRaw])
+  }, [dashboard?.recentActivity])
 
   const maxStock = Math.max(1, ...stockByCategory.map((x) => Number(x?.totalStock) || 0))
   const totalStock = stockByCategory.reduce((s, x) => s + (Number(x?.totalStock) || 0), 0)

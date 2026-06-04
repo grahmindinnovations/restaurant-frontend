@@ -10,7 +10,7 @@ export default function TablesPage() {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [tables, setTables] = useState([])
   const [isBookModalOpen, setIsBookModalOpen] = useState(false)
-  const [socket, setSocket] = useState(null)
+  const [notice, setNotice] = useState(null) // { type: 'success' | 'error', message: string }
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
@@ -36,7 +36,6 @@ export default function TablesPage() {
     load()
 
     const s = io()
-    setSocket(s)
     s.on('tables:update', (tablesPayload) => {
       const list = Array.isArray(tablesPayload) ? tablesPayload : []
       const byId = new Map()
@@ -62,6 +61,7 @@ export default function TablesPage() {
   }, [tables])
 
   const bookTable = async ({ tableId, name, phone }) => {
+    setNotice(null)
     try {
       await apiFetch(`/api/tables/${tableId}`, {
         method: 'PATCH',
@@ -72,13 +72,15 @@ export default function TablesPage() {
         }),
       })
       setIsBookModalOpen(false)
+      setNotice({ type: 'success', message: `Table ${tableId} booked.` })
     } catch (e) {
       console.error('Failed to book table:', e)
-      alert('Failed to book table.')
+      setNotice({ type: 'error', message: 'Failed to book table. Please try again.' })
     }
   }
 
   const markAvailable = async (tableId) => {
+    setNotice(null)
     try {
       await apiFetch(`/api/tables/${tableId}`, {
         method: 'PATCH',
@@ -89,9 +91,10 @@ export default function TablesPage() {
           currentOrderId: null,
         }),
       })
+      setNotice({ type: 'success', message: `Table ${tableId} is now available.` })
     } catch (e) {
       console.error('Failed to mark table available:', e)
-      alert('Failed to mark table available.')
+      setNotice({ type: 'error', message: 'Failed to update table. Please try again.' })
     }
   }
 
@@ -105,6 +108,18 @@ export default function TablesPage() {
         />
 
         <main className="p-6">
+          {notice?.message && (
+            <div
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+                notice.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-slate-200 bg-white text-slate-700'
+              }`}
+              role="status"
+            >
+              {notice.message}
+            </div>
+          )}
           <div className="flex items-center justify-between mb-4">
             <div className="text-sm font-semibold text-slate-500">Overview</div>
             <Button variant="outline" onClick={() => setIsBookModalOpen(true)}>Book Table</Button>

@@ -27,7 +27,7 @@ export default function POSPage(){
   const [salesToday, setSalesToday] = useState({ amount: 0, count: 0 })
   const [salesMonth, setSalesMonth] = useState({ amount: 0, count: 0 })
   const [popularRankById, setPopularRankById] = useState({})
-  const [socket, setSocket] = useState(null)
+  const [notice, setNotice] = useState(null) // { type: 'success' | 'error', message: string }
 
   useEffect(() => {
     const computeSales = (orders) => {
@@ -167,7 +167,6 @@ export default function POSPage(){
     loadInitial()
 
     const s = io()
-    setSocket(s)
 
     s.on('menu:update', (menu) => {
       const list = Array.isArray(menu) ? menu : []
@@ -331,9 +330,19 @@ export default function POSPage(){
   }
 
   async function onPlaceOrder(actionType, billMeta) {
-    if (cart.length === 0) return alert('Cart is empty')
-    if (!diningType) return alert('Select dining type')
-    if (diningType === 'Dine-in' && !table) return alert('Select a table')
+    setNotice(null)
+    if (cart.length === 0) {
+      setNotice({ type: 'error', message: 'Cart is empty. Add at least one item.' })
+      return
+    }
+    if (!diningType) {
+      setNotice({ type: 'error', message: 'Please select dining type.' })
+      return
+    }
+    if (diningType === 'Dine-in' && !table) {
+      setNotice({ type: 'error', message: 'Please select a table for dine-in orders.' })
+      return
+    }
 
     let status = 'received'
     if (actionType === 'draft') status = 'draft'
@@ -376,15 +385,18 @@ export default function POSPage(){
       }
     } catch (err) {
       console.error(err)
+      setNotice({ type: 'error', message: 'Could not save the order. Please try again.' })
+      return
     }
 
     newOrder()
-    if (actionType === 'kot') alert('KOT Printed (Sent to Kitchen)')
-    if (actionType === 'draft') alert('Order Saved to Drafts')
-    if (actionType === 'print' || actionType === 'bill') alert('Bill Generated & Paid')
+    if (actionType === 'kot') setNotice({ type: 'success', message: 'KOT sent to kitchen.' })
+    if (actionType === 'draft') setNotice({ type: 'success', message: 'Order saved.' })
+    if (actionType === 'print' || actionType === 'bill') setNotice({ type: 'success', message: 'Bill generated.' })
   }
 
   const bookTable = async ({ tableId, name, phone }) => {
+    setNotice(null)
     try {
       await apiFetch(`/api/tables/${tableId}`, {
         method: 'PATCH',
@@ -395,9 +407,10 @@ export default function POSPage(){
         }),
       })
       setIsBookModalOpen(false)
+      setNotice({ type: 'success', message: `Table ${tableId} booked.` })
     } catch (e) {
       console.error('Failed to book table:', e)
-      alert('Failed to book table.')
+      setNotice({ type: 'error', message: 'Failed to book table. Please try again.' })
     }
   }
 
@@ -418,6 +431,18 @@ export default function POSPage(){
         />
 
         <main className="p-6 relative">
+          {notice?.message && (
+            <div
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+                notice.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-slate-200 bg-white text-slate-700'
+              }`}
+              role="status"
+            >
+              {notice.message}
+            </div>
+          )}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
               <div className="flex items-start justify-between gap-4">

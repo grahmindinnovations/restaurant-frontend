@@ -210,6 +210,7 @@ export default function StockEntry() {
           })),
         )
       } catch {
+        /* ignore sync refresh errors */
       }
     }
     window.addEventListener('inventory:products-updated', handler)

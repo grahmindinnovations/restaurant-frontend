@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+﻿import React, { useState, useEffect, useRef, useMemo } from 'react'
 import tw, { styled, css } from 'twin.macro'
-import { ClipboardList, ChevronDown, TrendingUp, AlertCircle, Package, Clock, CheckCircle } from 'lucide-react'
+import { ClipboardList, AlertCircle, Clock, CheckCircle } from 'lucide-react'
 import { signOut } from 'firebase/auth'
 import { auth } from '../services/firebase'
 import { useNavigate } from 'react-router-dom'
@@ -34,7 +34,7 @@ const CardHeader = tw.div`flex items-center justify-between mb-4`
 const CardTitle = tw.h3`font-bold text-slate-800`
 
 const StatsGrid = tw.div`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-2`
-const StatCard = styled.div(({ active }) => [
+const StatCard = styled.div(() => [
   tw`p-5 rounded-2xl border flex items-center justify-between shadow-sm transition-all cursor-pointer bg-white`,
   tw`hover:border-rose-200 hover:shadow-md`,
 ])
@@ -321,10 +321,10 @@ function KitchenInventoryView() {
                 <tr key={item.id} className="border-t border-slate-100">
                   <td className="px-4 py-2 font-medium text-slate-800">{item.name}</td>
                   <td className="px-4 py-2 text-slate-500">{item.category}</td>
-                  <td className="px-4 py-2 text-right text-slate-700">₹{Number(item.price || 0).toFixed(0)}</td>
+                  <td className="px-4 py-2 text-right text-slate-700">â‚¹{Number(item.price || 0).toFixed(0)}</td>
                   <td className="px-4 py-2 text-right text-slate-700">
                     <div className="inline-flex items-center justify-end gap-2">
-                      <span className="text-slate-400">₹</span>
+                      <span className="text-slate-400">â‚¹</span>
                       <input
                         type="number"
                         min="0"
@@ -659,7 +659,7 @@ function KitchenProductInventoryView() {
                   <td className="px-4 py-2 font-medium text-slate-800">{p.name}</td>
                   <td className="px-4 py-2 text-slate-500">{p.category}</td>
                   <td className="px-4 py-2 text-right font-mono text-slate-800">{stock}</td>
-                  <td className="px-4 py-2 text-right text-slate-700">₹{Number(p.unitPrice || 0).toFixed(0)}</td>
+                  <td className="px-4 py-2 text-right text-slate-700">â‚¹{Number(p.unitPrice || 0).toFixed(0)}</td>
                   <td className="px-4 py-2 text-center">
                     <span className={`inline-flex px-2 py-1 rounded-full border text-xs font-semibold ${statusClass}`}>
                       {statusLabel}
@@ -858,6 +858,7 @@ export default function KitchenDashboard() {
     tick()
     const id = setInterval(tick, 30_000)
     return () => clearInterval(id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- kitchenConfig read via ref; deps are schedule fields only
   }, [kitchenConfig?.opening_time, kitchenConfig?.closing_time, kitchenConfig?.status])
 
   useEffect(() => {
@@ -1243,353 +1244,6 @@ export default function KitchenDashboard() {
             </Card>
           </SideSection>
         </DashboardGrid>
-      </div>
-    )
-  }
-
-  const InventoryView = () => {
-    const [items, setItems] = useState([])
-    const [loading, setLoading] = useState(true)
-    const [savingId, setSavingId] = useState(null)
-    const [query, setQuery] = useState('')
-    const [filter, setFilter] = useState('all')
-    const [draft, setDraft] = useState({})
-
-    useEffect(() => {
-      let cancelled = false
-      const load = async () => {
-        try {
-          const data = await apiFetch('/api/inventory/items')
-          if (!cancelled) {
-            const list = Array.isArray(data.items) ? data.items : []
-            setItems(list)
-            setDraft((prev) => {
-              const next = { ...prev }
-              for (const it of list) {
-                const id = String(it?.id || '')
-                if (!id) continue
-                if (next[id]) continue
-                next[id] = {
-                  qty: Number(it.daily_quantity) || 0,
-                  cost: Number(it.cost_price) || 0,
-                }
-              }
-              return next
-            })
-          }
-        } catch (e) {
-          console.error('Inventory load error:', e)
-        } finally {
-          if (!cancelled) setLoading(false)
-        }
-      }
-      load()
-      return () => {
-        cancelled = true
-      }
-    }, [])
-
-    const adjustDraftQty = (id, delta) => {
-      setDraft((prev) => {
-        const current = prev[String(id)] || { qty: 0, cost: 0 }
-        const nextQty = Math.max(0, (Number(current.qty) || 0) + delta)
-        return {
-          ...prev,
-          [String(id)]: {
-            ...current,
-            qty: nextQty,
-          },
-        }
-      })
-    }
-
-    const saveItem = async (item) => {
-      const id = String(item?.id || '')
-      if (!id) return
-      const d = draft[id]
-      const nextQty = Number(d?.qty)
-      const nextCost = Number(d?.cost)
-      if (!Number.isFinite(nextQty) || nextQty < 0) {
-        alert('Please enter a valid non-negative quantity.')
-        return
-      }
-      if (!Number.isFinite(nextCost) || nextCost < 0) {
-        alert('Please enter a valid non-negative cost price.')
-        return
-      }
-      setSavingId(id)
-      try {
-        await apiFetch(`/api/inventory/items/${id}`, {
-          method: 'PATCH',
-          body: JSON.stringify({
-            daily_quantity: nextQty,
-            cost_price: nextCost,
-            available: nextQty > 0,
-          }),
-        })
-        setItems((prev) =>
-          prev.map((it) =>
-            String(it.id) === id
-              ? { ...it, daily_quantity: nextQty, cost_price: nextCost, available: nextQty > 0 }
-              : it,
-          ),
-        )
-      } catch (e) {
-        console.error('Failed to update inventory item:', e)
-        alert('Failed to update item. Please try again.')
-      } finally {
-        setSavingId(null)
-      }
-    }
-
-    const resetItem = (item) => {
-      const id = String(item?.id || '')
-      if (!id) return
-      setDraft((prev) => ({
-        ...prev,
-        [id]: {
-          qty: Number(item.daily_quantity) || 0,
-          cost: Number(item.cost_price) || 0,
-        },
-      }))
-    }
-
-    const counts = useMemo(() => {
-      const list = Array.isArray(items) ? items : []
-      let inStock = 0
-      let low = 0
-      let out = 0
-      for (const it of list) {
-        const qty = Number(it?.daily_quantity) || 0
-        if (qty === 0) out += 1
-        else if (qty > 0 && qty < 20) low += 1
-        else inStock += 1
-      }
-      return { total: list.length, inStock, low, out }
-    }, [items])
-
-    const visibleItems = useMemo(() => {
-      const q = String(query || '').trim().toLowerCase()
-      return (Array.isArray(items) ? items : [])
-        .filter((it) => {
-          if (!it) return false
-          const name = String(it.name || '').toLowerCase()
-          const cat = String(it.category || '').toLowerCase()
-          if (q && !name.includes(q) && !cat.includes(q)) return false
-          const qty = Number(it.daily_quantity) || 0
-          if (filter === 'out') return qty === 0
-          if (filter === 'low') return qty > 0 && qty < 20
-          if (filter === 'in') return qty >= 20
-          return true
-        })
-        .sort((a, b) => {
-          const aq = Number(a?.daily_quantity) || 0
-          const bq = Number(b?.daily_quantity) || 0
-          return aq - bq
-        })
-    }, [filter, items, query])
-
-    if (loading) {
-      return (
-        <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-500">
-          Loading inventory...
-        </div>
-      )
-    }
-
-    return (
-      <div className="bg-white rounded-2xl border border-slate-200 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-bold text-slate-800">Inventory Management</h3>
-          <div className="text-xs text-slate-500 flex flex-wrap gap-2 justify-end">
-            <span className="px-2 py-1 rounded-full border border-slate-200 bg-slate-50">
-              Total: {counts.total}
-            </span>
-            <span className="px-2 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700">
-              In stock: {counts.inStock}
-            </span>
-            <span className="px-2 py-1 rounded-full border border-amber-200 bg-amber-50 text-amber-700">
-              Low: {counts.low}
-            </span>
-            <span className="px-2 py-1 rounded-full border border-rose-200 bg-rose-50 text-rose-700">
-              Out: {counts.out}
-            </span>
-          </div>
-        </div>
-
-        <div className="flex flex-col md:flex-row md:items-end gap-3 mb-4">
-          <div className="flex-1">
-            <label className="text-xs font-semibold text-slate-500">Search</label>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by item or category..."
-              className="mt-1 w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300"
-            />
-          </div>
-          <div className="w-full md:w-48">
-            <label className="text-xs font-semibold text-slate-500">Filter</label>
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="mt-1 w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300"
-            >
-              <option value="all">All items</option>
-              <option value="in">In stock</option>
-              <option value="low">Low stock</option>
-              <option value="out">Out of stock</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="px-4 py-2 text-left font-semibold text-slate-500">Item</th>
-                <th className="px-4 py-2 text-left font-semibold text-slate-500">Category</th>
-                <th className="px-4 py-2 text-right font-semibold text-slate-500">Price</th>
-                <th className="px-4 py-2 text-right font-semibold text-slate-500">Cost</th>
-                <th className="px-4 py-2 text-right font-semibold text-slate-500">Daily Qty</th>
-                <th className="px-4 py-2 text-center font-semibold text-slate-500">Status</th>
-                <th className="px-4 py-2 text-right font-semibold text-slate-500">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleItems.map(item => {
-                const qty = Number(item.daily_quantity) || 0
-                const cost = Number(item.cost_price) || 0
-                const low = qty > 0 && qty < 20
-                const statusLabel =
-                  qty === 0 ? 'Out of stock' : low ? 'Low' : 'In stock'
-                const statusClass =
-                  qty === 0
-                    ? 'bg-rose-50 text-rose-700 border-rose-200'
-                    : low
-                    ? 'bg-amber-50 text-amber-700 border-amber-200'
-                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                return (
-                  <tr key={item.id} className="border-t border-slate-100">
-                    <td className="px-4 py-2 font-medium text-slate-800">{item.name}</td>
-                    <td className="px-4 py-2 text-slate-500">{item.category}</td>
-                    <td className="px-4 py-2 text-right text-slate-700">
-                      ₹{Number(item.price || 0).toFixed(0)}
-                    </td>
-                    <td className="px-4 py-2 text-right text-slate-700">
-                      <div className="inline-flex items-center justify-end gap-2">
-                        <span className="text-slate-400">₹</span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={draft[String(item.id)]?.cost ?? cost}
-                          onChange={(e) => {
-                            const v = e.target.value
-                            setDraft((prev) => ({
-                              ...prev,
-                              [String(item.id)]: {
-                                ...(prev[String(item.id)] || { qty, cost }),
-                                cost: v === '' ? '' : Number(v),
-                              },
-                            }))
-                          }}
-                          className="w-24 h-9 rounded-lg border border-slate-200 bg-white px-2 text-right text-sm outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300"
-                          disabled={savingId === item.id}
-                        />
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <div className="inline-flex items-center gap-2 justify-end">
-                        <button
-                          type="button"
-                          className="h-9 w-9 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-                          onClick={() => adjustDraftQty(item.id, -5)}
-                          disabled={savingId === item.id}
-                        >
-                          -5
-                        </button>
-                        <button
-                          type="button"
-                          className="h-9 w-9 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-                          onClick={() => adjustDraftQty(item.id, -1)}
-                          disabled={savingId === item.id}
-                        >
-                          -
-                        </button>
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={draft[String(item.id)]?.qty ?? qty}
-                          onChange={(e) => {
-                            const v = e.target.value
-                            setDraft((prev) => ({
-                              ...prev,
-                              [String(item.id)]: {
-                                ...(prev[String(item.id)] || { qty, cost }),
-                                qty: v === '' ? '' : Number(v),
-                              },
-                            }))
-                          }}
-                          className="w-20 h-9 rounded-lg border border-slate-200 bg-white px-2 text-right font-mono text-sm outline-none focus:ring-2 focus:ring-rose-200 focus:border-rose-300"
-                          disabled={savingId === item.id}
-                        />
-                        <button
-                          type="button"
-                          className="h-9 w-9 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-                          onClick={() => adjustDraftQty(item.id, 1)}
-                          disabled={savingId === item.id}
-                        >
-                          +
-                        </button>
-                        <button
-                          type="button"
-                          className="h-9 w-9 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-                          onClick={() => adjustDraftQty(item.id, 5)}
-                          disabled={savingId === item.id}
-                        >
-                          +5
-                        </button>
-                      </div>
-                    </td>
-                    <td className="px-4 py-2 text-center">
-                      <span className={`inline-flex px-2 py-1 rounded-full border text-xs font-semibold ${statusClass}`}>
-                        {statusLabel}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-right">
-                      <div className="inline-flex gap-2">
-                        <button
-                          type="button"
-                          className="inline-flex items-center px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
-                          onClick={() => resetItem(item)}
-                          disabled={savingId === item.id}
-                        >
-                          Reset
-                        </button>
-                        <button
-                          type="button"
-                          className="inline-flex items-center px-3 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
-                          onClick={() => saveItem(item)}
-                          disabled={savingId === item.id}
-                        >
-                          {savingId === item.id ? 'Saving...' : 'Save'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-              {visibleItems.length === 0 && (
-                <tr>
-                  <td className="px-4 py-6 text-center text-slate-500" colSpan={7}>
-                    No inventory items found.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
       </div>
     )
   }

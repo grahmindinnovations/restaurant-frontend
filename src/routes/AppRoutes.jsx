@@ -1,8 +1,8 @@
 import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import RoleSelect from '../components/pages/RoleSelect'
 
 const Login = lazy(() => import('../components/pages/Login'))
+const RoleSelect = lazy(() => import('../components/pages/RoleSelect'))
 const Portal = lazy(() => import('../components/pages/Portal'))
 const POSPage = lazy(() => import('../reception/pages/POSPage'))
 const KitchenDisplay = lazy(() => import('../kitchen/KitchenDisplay'))
@@ -44,8 +44,9 @@ export default function AppRoutes() {
       }
     >
       <Routes>
-        <Route path="/" element={<RoleSelect />} />
+        <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/select-role" element={<RoleSelect />} />
         <Route path="/portal/:role" element={<Portal />} />
         <Route path="/pos" element={<POSPage />} />
         <Route path="/tables" element={<TablesPage />} />
@@ -77,7 +78,7 @@ export default function AppRoutes() {
           <Route path="integration/kds" element={<KDSIntegration />} />
           <Route path="integration/payments" element={<PaymentsIntegration />} />
         </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </Suspense>
   )

@@ -18,6 +18,7 @@ export default function ReportsPage() {
   const [expenses, setExpenses] = useState([])
   const [saving, setSaving] = useState(false)
   const [deletingId, setDeletingId] = useState(null)
+  const [notice, setNotice] = useState(null) // { type: 'success' | 'error', message: string }
 
   const [expenseCategory, setExpenseCategory] = useState('General')
   const [expenseAmount, setExpenseAmount] = useState('')
@@ -30,6 +31,7 @@ export default function ReportsPage() {
 
   const load = async () => {
     setLoading(true)
+    setNotice(null)
     try {
       const [s, e] = await Promise.all([
         apiFetch('/api/reports/summary'),
@@ -39,7 +41,7 @@ export default function ReportsPage() {
       setExpenses(Array.isArray(e.expenses) ? e.expenses : [])
     } catch (err) {
       console.error('Reports load error:', err)
-      alert('Failed to load reports data.')
+      setNotice({ type: 'error', message: 'Failed to load reports. Please try again.' })
     } finally {
       setLoading(false)
     }
@@ -52,10 +54,11 @@ export default function ReportsPage() {
   const addExpense = async () => {
     const amount = Number(expenseAmount)
     if (!Number.isFinite(amount) || amount <= 0) {
-      alert('Enter a valid expense amount.')
+      setNotice({ type: 'error', message: 'Enter a valid expense amount.' })
       return
     }
     setSaving(true)
+    setNotice(null)
     try {
       await apiFetch('/api/expenses', {
         method: 'POST',
@@ -68,9 +71,10 @@ export default function ReportsPage() {
       setExpenseAmount('')
       setExpenseNote('')
       await load()
+      setNotice({ type: 'success', message: 'Expense added.' })
     } catch (err) {
       console.error('Expense create error:', err)
-      alert('Failed to add expense.')
+      setNotice({ type: 'error', message: 'Failed to add expense. Please try again.' })
     } finally {
       setSaving(false)
     }
@@ -79,13 +83,15 @@ export default function ReportsPage() {
   const deleteExpense = async (id) => {
     if (!id) return
     setDeletingId(id)
+    setNotice(null)
     try {
       await apiFetch(`/api/expenses/${id}`, { method: 'DELETE' })
       setExpenses((prev) => prev.filter((x) => x.id !== id))
       await load()
+      setNotice({ type: 'success', message: 'Expense deleted.' })
     } catch (err) {
       console.error('Expense delete error:', err)
-      alert('Failed to delete expense.')
+      setNotice({ type: 'error', message: 'Failed to delete expense. Please try again.' })
     } finally {
       setDeletingId(null)
     }
@@ -104,6 +110,18 @@ export default function ReportsPage() {
         />
 
         <main className="p-6 space-y-6">
+          {notice?.message && (
+            <div
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                notice.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-slate-200 bg-white text-slate-700'
+              }`}
+              role="status"
+            >
+              {notice.message}
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
             <Card className="rounded-2xl border border-slate-200 shadow-sm">
               <CardHeader><CardTitle>Sales Orders</CardTitle></CardHeader>

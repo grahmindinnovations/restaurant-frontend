@@ -7,7 +7,6 @@ import { apiFetch } from '../services/api'
 export default function KitchenDisplay() {
   const [menu, setMenu] = useState([])
   const [orders, setOrders] = useState([])
-  const [socket, setSocket] = useState(null)
   const [view, setView] = useState('availability') // 'availability' or 'live-orders'
 
   const normalizeMenu = (list) => {
@@ -31,15 +30,14 @@ export default function KitchenDisplay() {
       .then(d => setOrders(Array.isArray(d.orders) ? d.orders : []))
       .catch(err => console.error('Error fetching orders:', err))
 
-    const newSocket = io()
-    setSocket(newSocket)
+    const socket = io()
 
-    newSocket.on('menu:update', (next) => setMenu(normalizeMenu(next)))
-    newSocket.on('orders:update', (allOrders) => {
+    socket.on('menu:update', (next) => setMenu(normalizeMenu(next)))
+    socket.on('orders:update', (allOrders) => {
        setOrders(allOrders.filter(o => o.status === 'kot'))
     })
 
-    return () => newSocket.close()
+    return () => socket.close()
   }, [])
 
   const toggleAvailability = (item) => {
