@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import tw, { styled, css } from 'twin.macro'
 import { ClipboardList, AlertCircle, Clock, CheckCircle } from 'lucide-react'
 import { signOut } from 'firebase/auth'
@@ -1016,6 +1016,10 @@ export default function KitchenDashboard() {
           name: newDish.name,
           category: newDish.category || 'Main Course',
           price: Number(newDish.price) || 0,
+          cost_price:
+            Number(newDish.cost_price) > 0
+              ? Number(newDish.cost_price)
+              : Math.round((Number(newDish.price) || 0) * 0.4),
           image_url: newDish.image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=200&q=80',
           daily_quantity: Number(newDish.daily_quantity) || 50,
           size: newDish.size || 'Regular',

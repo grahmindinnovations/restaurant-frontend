@@ -56,8 +56,8 @@ export default function AdminLayout() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin h-10 w-10 rounded-full border-4 border-rose-200 border-t-rose-600" />
+      <div className="min-h-screen flex items-center justify-center bg-neutral-50">
+        <div className="animate-spin h-8 w-8 rounded-full border-2 border-neutral-200 border-t-neutral-900" />
       </div>
     )
   }
@@ -67,11 +67,11 @@ export default function AdminLayout() {
   }
 
   return (
-    <div className="min-h-screen grid grid-cols-1 lg:grid-cols-[18rem_1fr] bg-slate-50">
+    <div className="min-h-screen flex bg-neutral-50">
       <Sidebar />
-      <div className="flex flex-col min-w-0">
+      <div className="flex flex-col flex-1 min-w-0">
         <Topbar adminUser={adminUser} />
-        <main className="p-6 space-y-6">
+        <main className="p-4 space-y-3">
           <Outlet context={{ adminUser }} />
         </main>
       </div>

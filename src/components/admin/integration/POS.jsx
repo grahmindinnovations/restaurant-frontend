@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import { apiFetch } from '../../../services/api'
 import { Card, CardContent } from '../../ui/card'
 import { Button } from '../../ui/button'
+import AdminNotice from '../components/AdminNotice'
+import { adminCard, adminPageTitle, adminPageDesc } from '../components/adminUi'
 
 export default function POS() {
   const [enabled, setEnabled] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [notice, setNotice] = useState(null)
 
   useEffect(() => {
     let cancelled = false
@@ -28,8 +31,9 @@ export default function POS() {
   }, [])
 
   const toggle = async () => {
+    const next = !enabled
+    setNotice(null)
     try {
-      const next = !enabled
       setEnabled(next)
       await apiFetch('/api/admin/integrations/pos', {
         method: 'PATCH',
@@ -37,37 +41,28 @@ export default function POS() {
       })
     } catch (e) {
       console.error('Failed to update POS integration', e)
-      alert('Failed to update POS integration.')
+      setEnabled(!next)
+      setNotice('Failed to update POS integration.')
     }
   }
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-slate-900">POS Integration</h1>
-      <Card className="bg-white border border-slate-200 rounded-2xl shadow-sm max-w-xl">
-        <CardContent className="p-4 space-y-3">
-          <p className="text-sm text-slate-600">
-            Control whether the integrated POS module is active for this restaurant.
-          </p>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-700">
-              Status:{' '}
-              <span className={enabled ? 'text-emerald-600' : 'text-slate-500'}>
-                {enabled ? 'Enabled' : 'Disabled'}
-              </span>
-            </span>
-            <Button
-              variant={enabled ? 'outline' : 'primary'}
-              size="sm"
-              disabled={loading}
-              onClick={toggle}
-            >
-              {enabled ? 'Disable POS' : 'Enable POS'}
-            </Button>
-          </div>
+    <div className="space-y-3 max-w-md">
+      <div>
+        <h1 className={adminPageTitle}>POS</h1>
+        <p className={adminPageDesc}>Enable or disable the reception POS module.</p>
+      </div>
+      {notice && <AdminNotice message={notice} variant="error" />}
+      <Card className={adminCard}>
+        <CardContent className="p-3 flex items-center justify-between gap-3 text-sm">
+          <span className="text-neutral-700">
+            Status: <span className="font-medium text-neutral-900">{enabled ? 'On' : 'Off'}</span>
+          </span>
+          <Button variant="outline" size="sm" className="h-7 text-xs" disabled={loading} onClick={toggle}>
+            {enabled ? 'Disable' : 'Enable'}
+          </Button>
         </CardContent>
       </Card>
     </div>
   )
 }
-

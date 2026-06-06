@@ -1,19 +1,8 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Bell, CheckCircle2, XCircle } from 'lucide-react'
+import { Bell } from 'lucide-react'
 import { Card, CardContent } from '../../ui/card'
 import { apiFetch } from '../../../services/api'
-
-const iconBySeverity = {
-  info: Bell,
-  warning: AlertTriangle,
-  critical: XCircle,
-}
-
-const colorBySeverity = {
-  info: 'text-sky-600 bg-sky-50 border-sky-100',
-  warning: 'text-amber-700 bg-amber-50 border-amber-100',
-  critical: 'text-rose-700 bg-rose-50 border-rose-100',
-}
+import { adminCard } from '../components/adminUi'
 
 export default function NotificationCenter() {
   const [notifications, setNotifications] = useState([])
@@ -41,49 +30,34 @@ export default function NotificationCenter() {
   }, [])
 
   return (
-    <aside className="w-full xl:w-80 xl:ml-4">
-      <Card className="bg-white border border-slate-200 rounded-2xl shadow-sm">
-        <CardContent className="p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900">Notification Center</h2>
-              <p className="text-[11px] text-slate-500">
-                Live alerts for low stock, staff and payments.
-              </p>
-            </div>
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+    <aside className="w-full">
+      <Card className={adminCard}>
+        <CardContent className="p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <Bell className="h-4 w-4 text-neutral-500" />
+            <h2 className="text-sm font-semibold text-neutral-900">Alerts</h2>
           </div>
+          <p className="text-xs text-neutral-500">Low stock, staff, and payment issues.</p>
 
           {loading ? (
-            <div className="text-xs text-slate-500">Loading alerts...</div>
+            <p className="text-xs text-neutral-500">Loading…</p>
           ) : notifications.length === 0 ? (
-            <div className="text-xs text-slate-400">No alerts at the moment.</div>
+            <p className="text-xs text-neutral-400">No alerts right now.</p>
           ) : (
-            <div className="space-y-2 max-h-72 overflow-y-auto">
-              {notifications.map((n) => {
-                const Icon = iconBySeverity[n.severity] || Bell
-                const color = colorBySeverity[n.severity] || colorBySeverity.info
-                return (
-                  <div
-                    key={n.id}
-                    className={[
-                      'flex items-start gap-2 rounded-xl px-3 py-2 border text-xs',
-                      color,
-                    ].join(' ')}
-                  >
-                    <Icon className="h-4 w-4 mt-0.5" />
-                    <div className="flex-1">
-                      <div className="font-semibold">{n.title}</div>
-                      <div className="text-[11px] opacity-90">{n.message}</div>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
+            <ul className="space-y-1.5 max-h-64 overflow-y-auto">
+              {notifications.map((n) => (
+                <li
+                  key={n.id}
+                  className="rounded-md border border-neutral-200 bg-neutral-50 px-2.5 py-2 text-xs"
+                >
+                  <div className="font-medium text-neutral-900">{n.title}</div>
+                  {n.message && <div className="text-neutral-600 mt-0.5">{n.message}</div>}
+                </li>
+              ))}
+            </ul>
           )}
         </CardContent>
       </Card>
     </aside>
   )
 }
-

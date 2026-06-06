@@ -25,16 +25,16 @@ export default function StaffRoles() {
   }, [])
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-slate-900">Staff Roles</h1>
-      <Card className="bg-white border border-slate-200 rounded-2xl shadow-sm max-w-xl">
+    <div className="space-y-3">
+      <h1 className="text-sm font-semibold text-neutral-900">Staff Roles</h1>
+      <Card className="bg-white border border-neutral-200 rounded-lg max-w-xl">
         <CardContent className="p-4 space-y-2">
           {loading ? (
-            <div className="text-sm text-slate-500">Loading roles...</div>
+            <div className="text-sm text-neutral-500">Loading roles...</div>
           ) : roles.length === 0 ? (
-            <div className="text-sm text-slate-500">
+            <div className="text-sm text-neutral-500">
               No staff roles configured. Manage roles in Firestore collection
-              <code className="ml-1 px-1.5 py-0.5 bg-slate-100 rounded text-[11px]">
+              <code className="ml-1 px-1.5 py-0.5 bg-neutral-100 rounded text-[11px]">
                 staff_roles
               </code>
               .
@@ -44,12 +44,12 @@ export default function StaffRoles() {
               {roles.map((r) => (
                 <li
                   key={r.id}
-                  className="flex items-center justify-between text-xs px-3 py-2 rounded-lg bg-slate-50 border border-slate-100"
+                  className="flex items-center justify-between text-xs px-3 py-2 rounded-lg bg-neutral-50 border border-neutral-100"
                 >
-                  <span className="font-semibold text-slate-800">
+                  <span className="font-semibold text-neutral-800">
                     {r.name || r.id}
                   </span>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-neutral-500">
                     {(r.permissions && r.permissions.length) || 0} permissions
                   </span>
                 </li>

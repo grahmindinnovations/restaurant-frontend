@@ -1,139 +1,212 @@
-import { useState, useEffect } from 'react'
-import { Card, CardContent } from '../components/ui/card'
+import { useCallback, useEffect, useState } from 'react'
 import { Button } from '../components/ui/button'
+import { Card, CardContent } from '../components/ui/card'
 import { io } from 'socket.io-client'
 import { apiFetch } from '../services/api'
+
+function formatOrderTime(value) {
+  if (!value) return '—'
+  const dt =
+    value?.toDate?.() ||
+    (value instanceof Date ? value : typeof value === 'string' ? new Date(value) : null)
+  if (!dt || Number.isNaN(dt.getTime())) return '—'
+  return dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+}
+
+function orderLabel(order) {
+  if (order?.type === 'takeaway') return 'Parcel'
+  return order?.table ? `Table ${order.table}` : 'Dine-in'
+}
+
+function normalizeMenu(list) {
+  const raw = Array.isArray(list) ? list : []
+  return raw.map((m) => ({
+    ...m,
+    id: m.id,
+    name: m.name || '',
+    category: m.category || 'General',
+    price: Number(m.price) || 0,
+    image: m.image || m.image_url || null,
+    available: m.available ?? m.is_active ?? true,
+    destination: m.destination || 'kitchen',
+  }))
+}
+
+function kitchenLines(order) {
+  const items = Array.isArray(order?.items) ? order.items : []
+  return items.filter((line) => {
+    if (line?.destination === 'kitchen' || !line?.destination) return true
+    return line.destination === 'kitchen'
+  })
+}
 
 export default function KitchenDisplay() {
   const [menu, setMenu] = useState([])
   const [orders, setOrders] = useState([])
-  const [view, setView] = useState('availability') // 'availability' or 'live-orders'
+  const [view, setView] = useState('live-orders')
+  const [finishingId, setFinishingId] = useState(null)
+  const [notice, setNotice] = useState(null)
 
-  const normalizeMenu = (list) => {
-    const raw = Array.isArray(list) ? list : []
-    return raw.map((m) => ({
-      ...m,
-      id: m.id,
-      name: m.name || '',
-      category: m.category || 'General',
-      price: Number(m.price) || 0,
-      image: m.image || m.image_url || null,
-      available: m.available ?? m.is_active ?? true,
-    }))
-  }
+  const applyKotOrders = useCallback((allOrders) => {
+    const list = Array.isArray(allOrders) ? allOrders : []
+    setOrders(list.filter((o) => String(o?.status || '').toLowerCase() === 'kot'))
+  }, [])
 
   useEffect(() => {
     apiFetch('/api/menu')
-      .then(d => setMenu(normalizeMenu(d?.menu)))
-      .catch(err => console.error('Error fetching menu:', err))
+      .then((d) => setMenu(normalizeMenu(d?.menu)))
+      .catch((err) => console.error('Error fetching menu:', err))
+
     apiFetch('/api/orders?status=kot')
-      .then(d => setOrders(Array.isArray(d.orders) ? d.orders : []))
-      .catch(err => console.error('Error fetching orders:', err))
+      .then((d) => applyKotOrders(d.orders))
+      .catch((err) => console.error('Error fetching orders:', err))
 
     const socket = io()
-
     socket.on('menu:update', (next) => setMenu(normalizeMenu(next)))
-    socket.on('orders:update', (allOrders) => {
-       setOrders(allOrders.filter(o => o.status === 'kot'))
-    })
+    socket.on('orders:update', applyKotOrders)
 
     return () => socket.close()
-  }, [])
+  }, [applyKotOrders])
 
   const toggleAvailability = (item) => {
     const updatedItem = { ...item, available: !item.available }
-    setMenu(prev => prev.map(i => i.id === item.id ? updatedItem : i))
+    setMenu((prev) => prev.map((i) => (i.id === item.id ? updatedItem : i)))
     apiFetch(`/api/menu/${item.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ available: updatedItem.available })
-    }).catch(err => {
+      body: JSON.stringify({ available: updatedItem.available }),
+    }).catch((err) => {
       console.error(err)
-      setMenu(prev => prev.map(i => i.id === item.id ? item : i))
+      setMenu((prev) => prev.map((i) => (i.id === item.id ? item : i)))
+      setNotice('Could not update item availability.')
     })
   }
 
-  const kitchenItems = menu.filter(m => m.destination === 'kitchen')
-
-  const markDelivered = (orderId) => {
-    apiFetch(`/api/orders/${orderId}/deliver`, {
-      method: 'POST'
-    })
-      .then(() => {
-        setOrders(prev => prev.filter(o => o.id !== orderId))
+  const finishOrder = async (orderId) => {
+    if (!orderId) return
+    setFinishingId(orderId)
+    setNotice(null)
+    try {
+      await apiFetch(`/api/kitchen/orders/${encodeURIComponent(orderId)}/finish`, {
+        method: 'POST',
       })
-      .catch(err => console.error(err))
+      setOrders((prev) => prev.filter((o) => o.id !== orderId))
+      setNotice(`Order #${orderId} completed.`)
+    } catch (err) {
+      console.error(err)
+      setNotice(`Failed to complete order #${orderId}.`)
+    } finally {
+      setFinishingId(null)
+    }
   }
+
+  const kitchenItems = menu.filter((m) => m.destination === 'kitchen' || !m.destination)
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <main className="p-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold">Kitchen Display System</h1>
-          <div className="flex gap-2">
-            <Button variant={view==='live-orders'?'default':'outline'} onClick={()=>setView('live-orders')}>Live KOTs</Button>
-            <Button variant={view==='availability'?'default':'outline'} onClick={()=>setView('availability')}>Manage Stock</Button>
+    <div className="min-h-screen bg-neutral-100">
+      <header className="border-b border-neutral-200 bg-white px-4 py-3">
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h1 className="text-lg font-semibold text-neutral-900">Kitchen</h1>
+            <p className="text-[11px] text-neutral-500">
+              {orders.length} KOT{orders.length === 1 ? '' : 's'} waiting
+            </p>
+          </div>
+          <div className="flex gap-1">
+            <Button
+              variant={view === 'live-orders' ? 'default' : 'outline'}
+              size="sm"
+              className="h-8 text-xs rounded-md"
+              onClick={() => setView('live-orders')}
+            >
+              KOT queue
+            </Button>
+            <Button
+              variant={view === 'availability' ? 'default' : 'outline'}
+              size="sm"
+              className="h-8 text-xs rounded-md"
+              onClick={() => setView('availability')}
+            >
+              Item availability
+            </Button>
           </div>
         </div>
+      </header>
+
+      <main className="p-3 md:p-4 max-w-6xl mx-auto">
+        {notice && (
+          <div
+            className="mb-2 rounded-lg border-2 border-neutral-800 bg-white px-3 py-2 text-sm font-medium text-neutral-900"
+            role="status"
+          >
+            {notice}
+          </div>
+        )}
 
         {view === 'live-orders' ? (
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-             {orders.length === 0 && <div className="text-gray-500">No pending kitchen orders</div>}
-             {orders.map(order => (
-               <Card key={order.id} className={`border-l-4 ${order.type === 'takeaway' ? 'border-l-yellow-500' : 'border-l-blue-500'}`}>
-                  <CardContent className="p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex flex-col">
-                        <span className="font-bold text-lg">#{order.id}</span>
-                        <span className="text-xs text-gray-500">{new Date(order.createdAt).toLocaleTimeString()}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {orders.length === 0 && (
+              <p className="text-sm text-neutral-500 col-span-full py-12 text-center">
+                No KOTs in queue. New orders appear here when reception sends KOT.
+              </p>
+            )}
+            {orders.map((order) => {
+              const lines = kitchenLines(order)
+              const displayLines = lines.length > 0 ? lines : order.items || []
+              return (
+                <Card
+                  key={order.id}
+                  className="border border-neutral-200 shadow-sm border-l-4 border-l-neutral-900"
+                >
+                  <CardContent className="p-3">
+                    <div className="flex justify-between items-start gap-2 mb-2">
+                      <div>
+                        <span className="font-semibold text-neutral-900">#{order.id}</span>
+                        <p className="text-[11px] text-neutral-500">{formatOrderTime(order.createdAt)}</p>
                       </div>
-                      <span className={`uppercase font-bold px-3 py-1 rounded text-white ${order.type === 'takeaway' ? 'bg-yellow-500' : 'bg-blue-600'}`}>
-                        {order.type === 'takeaway' ? 'PARCEL' : (order.table || 'DINE-IN')}
+                      <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded border border-neutral-300 bg-neutral-100 text-neutral-800">
+                        {orderLabel(order)}
                       </span>
                     </div>
-                    <div className="space-y-1 mt-3">
-                     {order.items.filter(i => i.destination === 'kitchen').map((item, idx) => (
-                       <div key={idx} className="flex justify-between border-b border-dashed py-1">
-                         <span>{item.name}</span>
-                         <span className="font-bold">x{item.qty}</span>
-                       </div>
-                     ))}
-                     {order.items.some(i => i.destination !== 'kitchen') && (
-                       <div className="text-xs text-gray-400 mt-2 italic">
-                         + {order.items.filter(i => i.destination !== 'kitchen').length} non-kitchen items
-                       </div>
-                     )}
-                   </div>
-                   <div className="mt-4 pt-2 border-t text-xs text-gray-500 flex justify-end items-center">
-                      <Button size="sm" className="bg-green-600 hover:bg-green-500 w-full" onClick={() => markDelivered(order.id)}>
-                        Mark Delivered
-                      </Button>
-                    </div>
+                    <ul className="space-y-1 text-sm text-neutral-800 mb-3">
+                      {displayLines.map((item, idx) => (
+                        <li
+                          key={`${item.id || item.name}-${idx}`}
+                          className="flex justify-between border-b border-dashed border-neutral-200 py-1"
+                        >
+                          <span>{item.name}</span>
+                          <span className="font-semibold tabular-nums">×{item.qty}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      className="w-full h-10 rounded-lg text-sm font-semibold"
+                      disabled={finishingId === order.id}
+                      onClick={() => finishOrder(order.id)}
+                    >
+                      {finishingId === order.id ? 'Completing…' : 'Complete'}
+                    </Button>
                   </CardContent>
-               </Card>
-             ))}
-           </div>
+                </Card>
+              )
+            })}
+          </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {kitchenItems.map(item => (
-              <Card key={item.id} className={`transition-colors ${!item.available ? 'bg-gray-100 opacity-75' : 'bg-white'}`}>
-                <CardContent className="p-4 flex flex-col items-center gap-4">
-                  <div className="w-full aspect-video rounded-lg overflow-hidden bg-gray-200">
-                     {item.image ? (
-                        <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                     ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-400">No Image</div>
-                     )}
-                  </div>
-                  <div className="text-center">
-                    <h3 className="font-bold text-lg">{item.name}</h3>
-                    <p className="text-sm text-gray-500">{item.category}</p>
-                  </div>
-                  <Button 
-                    variant={item.available ? "default" : "destructive"}
-                    className="w-full"
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {kitchenItems.map((item) => (
+              <Card
+                key={item.id}
+                className={`border border-neutral-200 ${!item.available ? 'opacity-70 bg-neutral-50' : 'bg-white'}`}
+              >
+                <CardContent className="p-3 flex flex-col gap-2">
+                  <h3 className="font-medium text-sm text-neutral-900">{item.name}</h3>
+                  <p className="text-[11px] text-neutral-500">{item.category}</p>
+                  <Button
+                    variant={item.available ? 'outline' : 'default'}
+                    size="sm"
+                    className="w-full h-8 text-xs rounded-md"
                     onClick={() => toggleAvailability(item)}
                   >
-                    {item.available ? 'Mark Unavailable' : 'Mark Available'}
+                    {item.available ? 'Mark unavailable' : 'Mark available'}
                   </Button>
                 </CardContent>
               </Card>

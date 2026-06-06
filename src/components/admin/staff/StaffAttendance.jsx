@@ -27,41 +27,41 @@ export default function StaffAttendance() {
   }, [])
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-slate-900">Staff Attendance</h1>
-      <Card className="bg-white border border-slate-200 rounded-2xl shadow-sm">
-        <CardContent className="p-4">
+    <div className="space-y-3">
+      <h1 className="text-sm font-semibold text-neutral-900">Staff Attendance</h1>
+      <Card className="bg-white border border-neutral-200 rounded-lg">
+        <CardContent className="p-3">
           {loading ? (
-            <div className="text-sm text-slate-500">Loading attendance...</div>
+            <div className="text-sm text-neutral-500">Loading attendance...</div>
           ) : records.length === 0 ? (
-            <div className="text-sm text-slate-500">
+            <div className="text-sm text-neutral-500">
               No attendance records found. Configure attendance tracking via backend / Firestore.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-xs">
-                <thead className="bg-slate-50">
+                <thead className="bg-neutral-50">
                   <tr>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-500">
+                    <th className="px-3 py-2 text-left font-semibold text-neutral-500">
                       Date
                     </th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-500">
+                    <th className="px-3 py-2 text-left font-semibold text-neutral-500">
                       Staff
                     </th>
-                    <th className="px-3 py-2 text-left font-semibold text-slate-500">
+                    <th className="px-3 py-2 text-left font-semibold text-neutral-500">
                       Status
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   {records.map((r) => (
-                    <tr key={r.id} className="border-t border-slate-100">
-                      <td className="px-3 py-2 text-slate-700">
+                    <tr key={r.id} className="border-t border-neutral-100">
+                      <td className="px-3 py-2 text-neutral-700">
                         {r.date || r.day || r.id}
                       </td>
-                      <td className="px-3 py-2 text-slate-600">{r.staffName || r.staffId}</td>
+                      <td className="px-3 py-2 text-neutral-600">{r.staffName || r.staffId}</td>
                       <td className="px-3 py-2">
-                        <span className="inline-flex px-2 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                        <span className="inline-flex px-2 py-1 rounded-full text-[11px] font-semibold bg-neutral-100 text-neutral-700 border border-neutral-200">
                           {r.status || 'present'}
                         </span>
                       </td>

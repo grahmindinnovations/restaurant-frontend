@@ -65,7 +65,10 @@ export default function Portal() {
         const res = await apiFetch(`/api/roles/${encodeURIComponent(roleId)}/access`)
         if (!res.allowed) {
           await signOut(a)
-          setNotice(`Access denied. ${meta?.title || 'This role'} requires different credentials.`)
+          setNotice({
+            type: 'error',
+            message: `Access denied. ${meta?.title || 'This role'} requires different credentials.`,
+          })
           setUser(null)
           setChecking(false)
           navigate(`/login?role=${encodeURIComponent(roleId)}`, { replace: true })
@@ -73,6 +76,20 @@ export default function Portal() {
         }
       } catch (err) {
         console.error('Error verifying role access in Portal via backend:', err)
+        const msg = String(err?.message || '')
+        const transient =
+          msg.includes('Failed to fetch') ||
+          msg.includes('ECONNREFUSED') ||
+          msg.includes('ECONNRESET')
+        if (transient) {
+          setNotice({
+            type: 'error',
+            message: 'Backend is not running. Start restaurant-backend (port 5180) and refresh.',
+          })
+          setUser(u)
+          setChecking(false)
+          return
+        }
         await signOut(a)
         navigate('/', { replace: true })
         return
@@ -128,9 +145,16 @@ export default function Portal() {
         </TopBar>
 
         <Card>
-          {notice && (
-            <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-              {notice}
+          {notice?.message && (
+            <div
+              className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
+                notice.type === 'success'
+                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                  : 'border-rose-200 bg-rose-50 text-rose-800'
+              }`}
+              role="status"
+            >
+              {notice.message}
             </div>
           )}
           <CardTitle>Welcome back!</CardTitle>

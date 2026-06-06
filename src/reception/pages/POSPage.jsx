@@ -1,4 +1,7 @@
-import { useMemo, useState, useEffect } from 'react'
+import { useMemo, useState, useEffect, useCallback } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
+import { onAuthStateChanged } from 'firebase/auth'
+import { auth, firebaseReady } from '../../services/firebase'
 import Sidebar from '../ReceptionSidebar'
 import Header from '../../layouts/Header'
 import { Input } from '../../components/ui/input'
@@ -10,8 +13,19 @@ import BookTableModal from '../modals/BookTableModal'
 import { apiFetch } from '../../services/api'
 import { io } from 'socket.io-client'
 import { printBill } from '../utils/printBill'
+import PageNotice from '../components/PageNotice'
+import { refreshReceptionNotifications } from '../utils/refreshNotifications'
+import { refreshReceptionTables } from '../utils/refreshTables'
+import { resolveMenuImageUrl } from '../../lib/menuImageUrl'
+import { normalizeTablesFromApi } from '../utils/normalizeTables'
+import { orderLineTotal } from '../utils/orderTotals'
+import { canContinueOrder, cartItemsFromOrder } from '../utils/orderContinue'
+import { useRestaurantSettings } from '../../hooks/useRestaurantSettings'
 
 export default function POSPage(){
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { settings: restaurantSettings } = useRestaurantSettings()
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
   const [brand, setBrand] = useState('')
@@ -21,25 +35,23 @@ export default function POSPage(){
   const [table, setTable] = useState('')
   const [menuItems, setMenuItems] = useState([])
   const [drafts, setDrafts] = useState([])
+  const [openOrders, setOpenOrders] = useState([])
+  const [continuingOrder, setContinuingOrder] = useState(false)
   const [showDrafts, setShowDrafts] = useState(false)
   const [tables, setTables] = useState([])
   const [isBookModalOpen, setIsBookModalOpen] = useState(false)
   const [salesToday, setSalesToday] = useState({ amount: 0, count: 0 })
-  const [salesMonth, setSalesMonth] = useState({ amount: 0, count: 0 })
   const [popularRankById, setPopularRankById] = useState({})
   const [notice, setNotice] = useState(null) // { type: 'success' | 'error', message: string }
+  const [dataLoading, setDataLoading] = useState(true)
 
   useEffect(() => {
     const computeSales = (orders) => {
       const list = Array.isArray(orders) ? orders : []
       const now = new Date()
       const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      const startMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-
       let todayAmount = 0
-      let monthAmount = 0
       let todayCount = 0
-      let monthCount = 0
 
       for (const o of list) {
         if (!o) continue
@@ -53,14 +65,7 @@ export default function POSPage(){
           rawDate ? new Date(rawDate) :
           null
         if (!dt || Number.isNaN(dt.getTime())) continue
-        const computedTotal = Array.isArray(o.items)
-          ? o.items.reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.price) || 0), 0)
-          : 0
-        const total = Number(o.total ?? computedTotal) || 0
-        if (dt >= startMonth) {
-          monthAmount += total
-          monthCount += 1
-        }
+        const total = orderLineTotal(o)
         if (dt >= startToday) {
           todayAmount += total
           todayCount += 1
@@ -68,7 +73,6 @@ export default function POSPage(){
       }
 
       setSalesToday({ amount: todayAmount, count: todayCount })
-      setSalesMonth({ amount: monthAmount, count: monthCount })
     }
 
     const computePopularItems = (orders) => {
@@ -112,6 +116,7 @@ export default function POSPage(){
     }
 
     const loadInitial = async () => {
+      setDataLoading(true)
       try {
         const [menuRes, ordersRes, tablesRes] = await Promise.all([
           apiFetch('/api/menu'),
@@ -133,7 +138,7 @@ export default function POSPage(){
             category,
             brand: m.brand || inferredBrand,
             price: Number(m.price) || 0,
-            image: m.image || m.image_url || null,
+            image: resolveMenuImageUrl(m.image || m.image_url),
             available: m.available ?? m.is_active ?? true,
           }
         })
@@ -149,74 +154,111 @@ export default function POSPage(){
           return { ...o, createdAt }
         })
         setDrafts(normalizedOrders.filter(o => o.status === 'draft'))
+        setOpenOrders(normalizedOrders.filter((o) => canContinueOrder(o)))
         computeSales(normalizedOrders)
         computePopularItems(normalizedOrders)
 
-        const byId = new Map()
-        tablesList.forEach(t => byId.set(t.id, { id: t.id, ...t }))
-        const nextTables = Array.from({ length: 10 }).map((_, i) => {
-          const id = `T${i + 1}`
-          return byId.get(id) || { id, status: 'available' }
-        })
-        setTables(nextTables)
+        setTables(normalizeTablesFromApi(tablesList))
       } catch (e) {
         console.error('POS initial load error:', e)
+        const msg = String(e?.message || '')
+        if (msg.includes('401') || msg.includes('Missing Authorization')) {
+          setNotice({ type: 'error', message: 'Session expired. Please sign in again.' })
+          navigate('/login', { replace: true })
+        } else {
+          setNotice({ type: 'error', message: 'Could not load menu. Check backend and refresh.' })
+        }
+      } finally {
+        setDataLoading(false)
       }
     }
 
-    loadInitial()
+    if (!firebaseReady || !auth) {
+      navigate('/login', { replace: true })
+      return undefined
+    }
 
-    const s = io()
-
-    s.on('menu:update', (menu) => {
-      const list = Array.isArray(menu) ? menu : []
-      const mapped = list.map(m => {
-        const category = m.category || 'General'
-        const inferredBrand = String(category).toLowerCase().includes('drink') ? 'Drinks' : 'Food'
-        return {
-          id: m.id,
-          ...m,
-          name: m.name || '',
-          category,
-          brand: m.brand || inferredBrand,
-          price: Number(m.price) || 0,
-          image: m.image || m.image_url || null,
-          available: m.available ?? m.is_active ?? true,
+    let socket = null
+    let didLoadForSession = false
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        didLoadForSession = false
+        if (socket) {
+          socket.close()
+          socket = null
         }
-      })
-      setMenuItems(mapped)
-    })
+        navigate('/login', { replace: true })
+        return
+      }
+      if (!didLoadForSession) {
+        didLoadForSession = true
+        loadInitial()
+      }
+      if (!socket) {
+        socket = io()
+        socket.on('menu:update', (menu) => {
 
-    s.on('orders:update', (orders) => {
-      const list = Array.isArray(orders) ? orders : []
-      const normalized = list.map(o => {
-        const createdAt =
-          o.createdAt?.toDate?.() ||
-          (typeof o.createdAt === 'string' || o.createdAt instanceof Date
-            ? new Date(o.createdAt)
-            : null)
-        return { ...o, createdAt }
-      })
-      setDrafts(normalized.filter(o => o.status === 'draft'))
-      computeSales(normalized)
-      computePopularItems(normalized)
-    })
+          const list = Array.isArray(menu) ? menu : []
+          const mapped = list.map(m => {
+            const category = m.category || 'General'
+            const inferredBrand = String(category).toLowerCase().includes('drink') ? 'Drinks' : 'Food'
+            return {
+              id: m.id,
+              ...m,
+              name: m.name || '',
+              category,
+              brand: m.brand || inferredBrand,
+              price: Number(m.price) || 0,
+              image: resolveMenuImageUrl(m.image || m.image_url),
+              available: m.available ?? m.is_active ?? true,
+            }
+          })
+          setMenuItems(mapped)
+        })
 
-    s.on('tables:update', (tablesPayload) => {
-      const tablesList = Array.isArray(tablesPayload) ? tablesPayload : []
-      const byId = new Map()
-      tablesList.forEach(t => byId.set(t.id, { id: t.id, ...t }))
-      const nextTables = Array.from({ length: 10 }).map((_, i) => {
-        const id = `T${i + 1}`
-        return byId.get(id) || { id, status: 'available' }
-      })
-      setTables(nextTables)
+        socket.on('orders:update', (orders) => {
+          const list = Array.isArray(orders) ? orders : []
+          const normalized = list.map(o => {
+            const createdAt =
+              o.createdAt?.toDate?.() ||
+              (typeof o.createdAt === 'string' || o.createdAt instanceof Date
+                ? new Date(o.createdAt)
+                : null)
+            return { ...o, createdAt }
+          })
+          setDrafts(normalized.filter(o => o.status === 'draft'))
+          setOpenOrders(normalized.filter((o) => canContinueOrder(o)))
+          computeSales(normalized)
+          computePopularItems(normalized)
+        })
+
+        socket.on('tables:update', (payload) => {
+          setTables(normalizeTablesFromApi(payload))
+        })
+
+        const onTablesRefresh = async () => {
+          try {
+            const tablesRes = await apiFetch('/api/tables')
+            setTables(normalizeTablesFromApi(tablesRes.tables))
+          } catch (e) {
+            console.error('POS tables refresh error:', e)
+          }
+        }
+        window.addEventListener('reception:tables-refresh', onTablesRefresh)
+        socket._tablesRefreshHandler = onTablesRefresh
+      }
     })
 
     return () => {
-      s.close()
+      unsubAuth()
+      if (socket) {
+        if (socket._tablesRefreshHandler) {
+          window.removeEventListener('reception:tables-refresh', socket._tablesRefreshHandler)
+        }
+        socket.close()
+      }
     }
-  }, [])
+  }, [navigate])
 
   const categories = useMemo(()=>['All', ...Array.from(new Set(menuItems.map(m=>m.category)))],[menuItems])
   const brands = ['All','Food','Drinks']
@@ -235,8 +277,6 @@ export default function POSPage(){
   }, [filtered, popularRankById])
 
   const salesFormatter = useMemo(() => new Intl.NumberFormat('en-IN'), [])
-  const monthExcludingToday = Math.max(0, (salesMonth.amount || 0) - (salesToday.amount || 0))
-  const monthTotal = Math.max(0, salesMonth.amount || 0)
 
   const tableCounts = useMemo(() => {
     const list = Array.isArray(tables) ? tables : []
@@ -245,65 +285,6 @@ export default function POSPage(){
     const occupied = list.filter(t => t.status === 'occupied').length
     return { total: list.length, available, reserved, occupied }
   }, [tables])
-
-  const SalesDonut = ({ today, restOfMonth, total, todayCount }) => {
-    const r = 18
-    const c = 2 * Math.PI * r
-    const todayLen = total > 0 ? (today / total) * c : 0
-    const restLen = total > 0 ? (restOfMonth / total) * c : 0
-
-    return (
-      <svg width="56" height="56" viewBox="0 0 56 56" className="shrink-0">
-        <g transform="translate(28 28) rotate(-90)">
-          <circle r={r} cx="0" cy="0" fill="transparent" stroke="#e2e8f0" strokeWidth="10" />
-          {total > 0 && (
-            <>
-              <circle
-                r={r}
-                cx="0"
-                cy="0"
-                fill="transparent"
-                stroke="#e11d48"
-                strokeWidth="10"
-                strokeLinecap="round"
-                strokeDasharray={`${todayLen} ${Math.max(0, c - todayLen)}`}
-                strokeDashoffset="0"
-              />
-              <circle
-                r={r}
-                cx="0"
-                cy="0"
-                fill="transparent"
-                stroke="#0f172a"
-                strokeWidth="10"
-                strokeLinecap="round"
-                strokeDasharray={`${restLen} ${Math.max(0, c - restLen)}`}
-                strokeDashoffset={-todayLen}
-              />
-            </>
-          )}
-        </g>
-        <text
-          x="28"
-          y="28"
-          textAnchor="middle"
-          dominantBaseline="middle"
-          className="fill-slate-900 text-[12px] font-bold"
-        >
-          {Number(todayCount || 0)}
-        </text>
-        <text
-          x="28"
-          y="40"
-          textAnchor="middle"
-          dominantBaseline="middle"
-          className="fill-slate-500 text-[8px] font-semibold"
-        >
-          sales today
-        </text>
-      </svg>
-    )
-  }
 
   function addItem(item){
     setCart(prev=>{
@@ -323,6 +304,7 @@ export default function POSPage(){
     setDiningType('')
     setTable('')
     setOrderId(String(Date.now()).slice(-6))
+    setContinuingOrder(false)
   }
   function onDiningChange(val){
     setDiningType(val)
@@ -375,13 +357,15 @@ export default function POSPage(){
           body: JSON.stringify({
             status: nextTableStatus,
             currentOrderId: status === 'draft' ? null : String(localOrderId),
+            ...(status === 'draft' ? {} : { reservedBy: null, phone: null }),
           }),
         })
+        refreshReceptionTables()
       }
       
       // Auto-print if the action implies billing
       if (actionType === 'print' || actionType === 'bill') {
-        printBill(orderPayload)
+        printBill(orderPayload, restaurantSettings)
       }
     } catch (err) {
       console.error(err)
@@ -390,9 +374,24 @@ export default function POSPage(){
     }
 
     newOrder()
-    if (actionType === 'kot') setNotice({ type: 'success', message: 'KOT sent to kitchen.' })
-    if (actionType === 'draft') setNotice({ type: 'success', message: 'Order saved.' })
+    if (actionType === 'kot') {
+      setNotice({
+        type: 'success',
+        message: continuingOrder
+          ? 'Additional items sent to kitchen.'
+          : 'KOT sent to kitchen.',
+      })
+    }
+    if (actionType === 'draft') {
+      setNotice({
+        type: 'success',
+        message: diningType === 'Dine-in' && table
+          ? `Order saved. Table ${table} stays reserved until you send KOT.`
+          : 'Order saved.',
+      })
+    }
     if (actionType === 'print' || actionType === 'bill') setNotice({ type: 'success', message: 'Bill generated.' })
+    refreshReceptionNotifications()
   }
 
   const bookTable = async ({ tableId, name, phone }) => {
@@ -408,149 +407,249 @@ export default function POSPage(){
       })
       setIsBookModalOpen(false)
       setNotice({ type: 'success', message: `Table ${tableId} booked.` })
+      refreshReceptionTables()
+      refreshReceptionNotifications()
     } catch (e) {
       console.error('Failed to book table:', e)
       setNotice({ type: 'error', message: 'Failed to book table. Please try again.' })
     }
   }
 
+  const reservedTables = useMemo(
+    () => (Array.isArray(tables) ? tables : []).filter((t) => t.status === 'reserved'),
+    [tables],
+  )
+
+  const continueOrder = useCallback((order) => {
+    if (!order?.id || !canContinueOrder(order)) {
+      setNotice({ type: 'error', message: 'This order cannot be edited on POS.' })
+      return
+    }
+    setCart(cartItemsFromOrder(order))
+    setOrderId(String(order.id))
+    setDiningType(order.type === 'dine-in' ? 'Dine-in' : 'Takeaway')
+    setTable(order.table || '')
+    setContinuingOrder(true)
+    setShowDrafts(false)
+    setNotice({
+      type: 'success',
+      message: `Order #${order.id} — add items, then Send more to KOT.`,
+    })
+  }, [])
+
+  useEffect(() => {
+    const order = location.state?.continueOrder
+    if (!order?.id) return
+    continueOrder(order)
+    navigate('/pos', { replace: true, state: null })
+  }, [location.state, continueOrder, navigate])
+
+  async function continueTableOrder(tableRow) {
+    const oid = String(tableRow?.currentOrderId || '')
+    if (!oid) {
+      setNotice({ type: 'error', message: 'No active order on this table.' })
+      return
+    }
+    let order = openOrders.find((o) => String(o.id) === oid)
+    if (!order) {
+      try {
+        const data = await apiFetch('/api/orders')
+        const list = Array.isArray(data.orders) ? data.orders : []
+        order = list.find((o) => String(o.id) === oid)
+      } catch (e) {
+        console.error('Load order for table:', e)
+        setNotice({ type: 'error', message: 'Could not load order. Try again.' })
+        return
+      }
+    }
+    if (!order || !canContinueOrder(order)) {
+      setNotice({ type: 'error', message: 'Order not found or already paid.' })
+      return
+    }
+    continueOrder(order)
+  }
+
+  function startReservedTable(t) {
+    setCart([])
+    setOrderId(String(Date.now()).slice(-6))
+    setDiningType('Dine-in')
+    setTable(t.id)
+    setContinuingOrder(false)
+    setShowDrafts(false)
+    const guest = [t.reservedBy, t.phone].filter(Boolean).join(' · ')
+    setNotice({
+      type: 'success',
+      message: guest
+        ? `Table ${t.id} (${guest}) — add items, then Send KOT when the customer is seated.`
+        : `Table ${t.id} — add items, then Send KOT when the customer is seated.`,
+    })
+  }
+
   function loadDraft(order) {
-    setCart(order.items)
+    setCart(cartItemsFromOrder(order))
     setOrderId(order.id)
     setDiningType(order.type === 'dine-in' ? 'Dine-in' : 'Takeaway')
     setTable(order.table || '')
+    setContinuingOrder(false)
     setShowDrafts(false)
   }
 
+  const occupiedTables = useMemo(
+    () =>
+      (Array.isArray(tables) ? tables : []).filter(
+        (t) => t.status === 'occupied' && t.currentOrderId,
+      ),
+    [tables],
+  )
+
   return (
-    <div className="min-h-screen grid grid-cols-1 lg:grid-cols-[16rem_1fr_24rem] bg-slate-50">
+    <div className="min-h-screen grid grid-cols-1 lg:grid-cols-[14rem_1fr_19rem] bg-neutral-100">
       <Sidebar/>
       <div className="flex flex-col min-w-0">
-        <Header
-          title={<span>Reception <span className="text-rose-700">POS</span></span>}
-        />
+        <Header title="Point of sale" showUserMenu showNotifications />
 
-        <main className="p-6 relative">
-          {notice?.message && (
-            <div
-              className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
-                notice.type === 'success'
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                  : 'border-slate-200 bg-white text-slate-700'
-              }`}
-              role="status"
+        <main className="flex flex-col min-h-0 flex-1 p-2 md:p-3 relative">
+          <PageNotice message={notice?.message} />
+
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2 py-1.5">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-neutral-600 shrink-0">
+              <span>
+                Today <span className="font-semibold text-neutral-900">₹{salesFormatter.format(salesToday.amount || 0)}</span>
+                <span className="text-neutral-400"> · </span>
+                {salesToday.count || 0} orders
+              </span>
+              <span className="text-neutral-300 hidden sm:inline">|</span>
+              <span className="hidden sm:inline">
+                {tableCounts.available} free · {tableCounts.reserved} res · {tableCounts.occupied} busy
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px] rounded-md shrink-0"
+              onClick={() => setIsBookModalOpen(true)}
             >
-              {notice.message}
+              Book
+            </Button>
+
+            <div className="hidden sm:block h-5 w-px bg-neutral-200 shrink-0" aria-hidden />
+
+            <Input
+              placeholder="Search…"
+              value={query}
+              onChange={e=>setQuery(e.target.value)}
+              className="h-7 min-w-[7rem] flex-1 sm:flex-none sm:w-36 text-xs rounded-md border-neutral-200 px-2"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px] rounded-md shrink-0"
+              onClick={()=>setShowDrafts(!showDrafts)}
+            >
+              Saved ({drafts.length})
+            </Button>
+            <Select
+              value={category}
+              onChange={e=>setCategory(e.target.value)}
+              className="h-7 w-[5.5rem] text-xs rounded-md border-neutral-200 px-2 py-0"
+              title="Category"
+            >
+              <option value="">Category</option>
+              {categories.slice(1).map(c=><option key={c} value={c}>{c}</option>)}
+            </Select>
+            <Select
+              value={brand}
+              onChange={e=>setBrand(e.target.value)}
+              className="h-7 w-[5.5rem] text-xs rounded-md border-neutral-200 px-2 py-0"
+              title="Brand"
+            >
+              <option value="">Brand</option>
+              {brands.slice(1).map(b=><option key={b} value={b}>{b}</option>)}
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px] rounded-md shrink-0 sm:ml-auto"
+              onClick={newOrder}
+            >
+              New
+            </Button>
+          </div>
+
+          {occupiedTables.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2 py-1.5">
+              <span className="text-[11px] font-medium text-neutral-700 shrink-0">In service — add items?</span>
+              {occupiedTables.map((t) => (
+                <Button
+                  key={t.id}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-[11px] rounded-md"
+                  onClick={() => continueTableOrder(t)}
+                >
+                  {t.id} · #{t.currentOrderId}
+                </Button>
+              ))}
             </div>
           )}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="text-sm font-semibold text-slate-500">Sales</div>
-                  <div className="mt-1 text-xl font-bold text-slate-900">
-                    ₹{salesFormatter.format(salesToday.amount || 0)}
-                    <span className="text-sm font-semibold text-slate-500"> today</span>
-                  </div>
-                  <div className="mt-1 text-sm text-slate-500">
-                    {salesToday.count || 0} finished orders today • ₹{salesFormatter.format(monthTotal)} this month
-                  </div>
-                </div>
-                <SalesDonut today={salesToday.amount || 0} todayCount={salesToday.count || 0} restOfMonth={monthExcludingToday} total={monthTotal} />
-              </div>
 
-              <div className="mt-4 flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-3 h-3 rounded-full bg-rose-600" />
-                  <span className="text-slate-600">Today</span>
-                  <span className="font-semibold text-slate-900">₹{salesFormatter.format(salesToday.amount || 0)}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="inline-block w-3 h-3 rounded-full bg-slate-900" />
-                  <span className="text-slate-600">Month (excl. today)</span>
-                  <span className="font-semibold text-slate-900">₹{salesFormatter.format(monthExcludingToday)}</span>
-                </div>
-              </div>
+          {reservedTables.length > 0 && (
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2 py-1.5">
+              <span className="text-[11px] font-medium text-neutral-700 shrink-0">Reserved — guest arrived?</span>
+              {reservedTables.map((t) => (
+                <Button
+                  key={t.id}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2 text-[11px] rounded-md"
+                  onClick={() => startReservedTable(t)}
+                >
+                  {t.id}
+                  {t.reservedBy ? ` · ${t.reservedBy}` : ''}
+                </Button>
+              ))}
             </div>
-
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-slate-500">Tables</div>
-                <Button variant="outline" onClick={() => setIsBookModalOpen(true)}>Book Table</Button>
-              </div>
-              <div className="mt-2 grid grid-cols-4 gap-3">
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100">
-                  <div className="text-xs font-semibold text-slate-500">Total</div>
-                  <div className="text-xl font-bold text-slate-900">{tableCounts.total}</div>
-                </div>
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100">
-                  <div className="text-xs font-semibold text-emerald-700">Available</div>
-                  <div className="text-xl font-bold text-emerald-800">{tableCounts.available}</div>
-                </div>
-                <div className="p-3 rounded-xl bg-amber-50 border border-amber-100">
-                  <div className="text-xs font-semibold text-amber-700">Reserved</div>
-                  <div className="text-xl font-bold text-amber-800">{tableCounts.reserved}</div>
-                </div>
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-100">
-                  <div className="text-xs font-semibold text-rose-700">Occupied</div>
-                  <div className="text-xl font-bold text-rose-800">{tableCounts.occupied}</div>
-                </div>
-              </div>
-              <div className="mt-4 grid grid-cols-5 gap-2">
-                {tables.map(t => (
-                  <div
-                    key={t.id}
-                    className={`px-3 py-2 rounded-xl text-sm font-bold border ${
-                      (t.status || 'available') === 'available'
-                        ? 'bg-white border-slate-200 text-slate-900'
-                        : t.status === 'reserved'
-                        ? 'bg-amber-50 border-amber-200 text-amber-800'
-                        : 'bg-rose-50 border-rose-200 text-rose-800'
-                    }`}
-                  >
-                    {t.id}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row gap-2 items-stretch justify-between mb-4">
-            <Input placeholder="Search in products" value={query} onChange={e=>setQuery(e.target.value)} className="sm:max-w-xs" />
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={()=>setShowDrafts(!showDrafts)}>
-                Active Tables ({drafts.length})
-              </Button>
-              <Select value={category} onChange={e=>setCategory(e.target.value)}><option>All</option>{categories.slice(1).map(c=><option key={c}>{c}</option>)}</Select>
-              <Select value={brand} onChange={e=>setBrand(e.target.value)}><option>All</option>{brands.slice(1).map(b=><option key={b}>{b}</option>)}</Select>
-              <Button variant="secondary" onClick={newOrder}>New Order</Button>
-            </div>
-          </div>
+          )}
 
           {showDrafts && (
-            <div className="absolute top-20 right-6 left-6 bg-white shadow-xl border rounded-xl z-10 p-4 max-h-[80vh] overflow-auto">
-              <h2 className="text-xl font-bold mb-4">Active Table Orders (Drafts)</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {drafts.length===0 && <div className="text-gray-500">No active drafts</div>}
+            <div className="absolute top-16 left-4 right-4 z-10 rounded-xl border border-neutral-200 bg-white shadow-lg p-4 max-h-[70vh] overflow-auto">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold text-neutral-900">Saved drafts (in-progress orders)</h2>
+                <button type="button" className="text-sm text-neutral-500 hover:text-neutral-900" onClick={() => setShowDrafts(false)}>
+                  Close
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                {drafts.length===0 && <p className="text-sm text-neutral-500">No saved orders</p>}
                 {drafts.map(d => (
-                  <div key={d.id} className="border p-3 rounded-lg hover:bg-gray-50 cursor-pointer" onClick={()=>loadDraft(d)}>
-                    <div className="font-bold flex justify-between">
+                  <button
+                    key={d.id}
+                    type="button"
+                    className="text-left rounded-xl border border-neutral-200 p-3 hover:bg-neutral-50"
+                    onClick={()=>loadDraft(d)}
+                  >
+                    <div className="font-medium text-neutral-900 flex justify-between text-sm">
                       <span>{d.table || 'Takeaway'}</span>
-                      <span>#{d.id}</span>
+                      <span className="text-neutral-500">#{d.id}</span>
                     </div>
-                    <div className="text-sm text-gray-500 mt-1">
-                      {d.items.length} items • ₹{d.total}
+                    <div className="text-xs text-neutral-500 mt-1">
+                      {d.items.length} items · ₹{d.total}
                     </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {d.createdAt ? new Date(d.createdAt).toLocaleTimeString() : ''}
-                    </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
           )}
 
-          <MenuGrid items={filteredWithPopular} onAdd={addItem}/>
+          <div className="flex-1 min-h-0 overflow-y-auto pb-2">
+            {dataLoading && menuItems.length === 0 ? (
+              <p className="py-8 text-center text-sm text-neutral-500">Loading menu…</p>
+            ) : (
+              <MenuGrid items={filteredWithPopular} onAdd={addItem}/>
+            )}
+          </div>
         </main>
       </div>
       <OrderPanel 
@@ -559,14 +658,19 @@ export default function POSPage(){
         onInc={inc} 
         onDec={dec} 
         onRemove={removeItem} 
-        gstRate={0.05} 
-        serviceChargeRate={0} 
+        gstRate={(restaurantSettings.gstPercent || 0) / 100}
+        gstEnabled={restaurantSettings.gstEnabled}
+        serviceChargeAmount={restaurantSettings.serviceChargeAmount}
+        serviceChargeEnabled={restaurantSettings.serviceChargeEnabled}
+        serviceChargeDineInOnly={restaurantSettings.serviceChargeDineInOnly}
         diningType={diningType} 
         onDiningChange={onDiningChange} 
         table={table} 
         onTableChange={setTable}
         onPlaceOrder={onPlaceOrder}
         tables={tables}
+        continuingOrder={continuingOrder}
+        activeOrderTableId={continuingOrder ? table : null}
       />
       <BookTableModal
         isOpen={isBookModalOpen}

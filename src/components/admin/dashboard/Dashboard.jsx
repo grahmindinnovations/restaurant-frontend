@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
 import { apiFetch } from '../../../services/api'
 import KPIWidgets from './KPIWidgets'
 import SalesCharts from './SalesCharts'
@@ -8,7 +7,6 @@ import QuickActions from './QuickActions'
 import NotificationCenter from './NotificationCenter'
 
 export default function Dashboard() {
-  const { adminUser } = useOutletContext()
   const [metrics, setMetrics] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -33,20 +31,25 @@ export default function Dashboard() {
   }, [])
 
   return (
-    <div className="space-y-4">
-      <KPIWidgets kpis={metrics?.kpis} adminUser={adminUser} />
-      <div className="flex flex-col xl:flex-row gap-4">
-        <div className="flex-1 space-y-4">
-          <SalesCharts charts={metrics?.charts || {}} />
-          <GlobalSearch />
-          <QuickActions />
-        </div>
-        <NotificationCenter />
+    <div className="space-y-3">
+      <div>
+        <h1 className="text-sm font-semibold text-neutral-900">Dashboard</h1>
+        <p className="text-xs text-neutral-500">Paid orders, expenses, and live alerts.</p>
       </div>
       {loading && !metrics && (
-        <div className="text-xs text-slate-500">Loading dashboard data...</div>
+        <p className="text-xs text-neutral-500">Loading metrics…</p>
       )}
+      <KPIWidgets kpis={metrics?.kpis} />
+      <div className="flex flex-col xl:flex-row gap-3">
+        <div className="flex-1 min-w-0 space-y-3">
+          <SalesCharts charts={metrics?.charts || {}} showRankings={false} />
+          <GlobalSearch />
+        </div>
+        <div className="w-full xl:w-72 shrink-0 space-y-3">
+          <NotificationCenter />
+          <QuickActions />
+        </div>
+      </div>
     </div>
   )
 }
-

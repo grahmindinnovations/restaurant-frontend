@@ -27,7 +27,17 @@ function escapeHtml(input) {
     .replaceAll("'", '&#039;')
 }
 
-function buildReceiptHtml(order) {
+function buildReceiptHtml(order, settings = null) {
+  const s = settings && typeof settings === 'object' ? settings : {}
+  const restaurantName =
+    s.restaurantName || import.meta.env.VITE_RESTAURANT_NAME || 'Restaurant'
+  const address = [s.address, s.city].filter(Boolean).join(', ')
+    || import.meta.env.VITE_RESTAURANT_ADDRESS
+    || ''
+  const phone = s.phone || import.meta.env.VITE_RESTAURANT_PHONE || ''
+  const gstin = s.gstin || ''
+  const receiptFooter = s.receiptFooter || 'Thank you. Visit again!'
+  const showGstOnReceipt = s.showGstOnReceipt !== false
   const id = String(order?.id || '')
   const createdAt =
     toDateValue(order?.createdAt) || toDateValue(order?.created_at) || toDateValue(order?.updatedAt) || new Date()
@@ -53,9 +63,11 @@ function buildReceiptHtml(order) {
 
   const header = `
     <div class="center">
-      <div class="title">${escapeHtml(import.meta.env.VITE_RESTAURANT_NAME || 'Restaurant')}</div>
-      <div class="muted">${escapeHtml(import.meta.env.VITE_RESTAURANT_ADDRESS || '')}</div>
-      <div class="muted">${escapeHtml(import.meta.env.VITE_RESTAURANT_PHONE || '')}</div>
+      <div class="title">${escapeHtml(restaurantName)}</div>
+      ${s.tagline ? `<div class="muted">${escapeHtml(s.tagline)}</div>` : ''}
+      ${address ? `<div class="muted">${escapeHtml(address)}</div>` : ''}
+      ${phone ? `<div class="muted">${escapeHtml(phone)}</div>` : ''}
+      ${gstin ? `<div class="muted">GSTIN: ${escapeHtml(gstin)}</div>` : ''}
     </div>
     <div class="hr"></div>
     <div class="row"><span>Bill No:</span><span>${escapeHtml(id)}</span></div>
@@ -90,8 +102,9 @@ function buildReceiptHtml(order) {
     if (serviceCharge > 0) {
       footerBreakdown += `<div class="row text-sm"><span>Service Tax</span><span>₹${escapeHtml(currency(serviceCharge))}</span></div>`
     }
-    if (gst > 0) {
-      footerBreakdown += `<div class="row text-sm"><span>GST</span><span>₹${escapeHtml(currency(gst))}</span></div>`
+    if (showGstOnReceipt && gst > 0) {
+      const gstLabel = s.gstPercent ? `GST (${s.gstPercent}%)` : 'GST'
+      footerBreakdown += `<div class="row text-sm"><span>${escapeHtml(gstLabel)}</span><span>₹${escapeHtml(currency(gst))}</span></div>`
     }
   }
 
@@ -100,7 +113,7 @@ function buildReceiptHtml(order) {
     <div class="hr"></div>
     <div class="row total"><span>Total</span><span>₹${escapeHtml(currency(total))}</span></div>
     <div class="hr"></div>
-    <div class="center muted">Thank you. Visit again!</div>
+    <div class="center muted">${escapeHtml(receiptFooter)}</div>
   `
 
   const styles = `
@@ -126,8 +139,8 @@ function buildReceiptHtml(order) {
   return `<!doctype html><html><head><meta charset="utf-8"/><title>Bill ${escapeHtml(id)}</title>${styles}</head><body><div class="wrap">${header}${lines}${footer}</div></body></html>`
 }
 
-export function printBill(order) {
-  const html = buildReceiptHtml(order)
+export function printBill(order, settings = null) {
+  const html = buildReceiptHtml(order, settings)
   
   let iframe = document.getElementById('receipt-print-iframe')
   if (!iframe) {

@@ -1,63 +1,89 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Sidebar from '../ReceptionSidebar'
 import Header from '../../layouts/Header'
 import { Button } from '../../components/ui/button'
 import BookTableModal from '../modals/BookTableModal'
+import PageNotice from '../components/PageNotice'
+import { refreshReceptionNotifications } from '../utils/refreshNotifications'
+import { refreshReceptionTables } from '../utils/refreshTables'
+import { normalizeTablesFromApi } from '../utils/normalizeTables'
+import { useReceptionAuth } from '../hooks/useReceptionAuth'
 import { apiFetch } from '../../services/api'
 import { io } from 'socket.io-client'
 
-export default function TablesPage() {
-  const [currentTime, setCurrentTime] = useState(new Date())
-  const [tables, setTables] = useState([])
-  const [isBookModalOpen, setIsBookModalOpen] = useState(false)
-  const [notice, setNotice] = useState(null) // { type: 'success' | 'error', message: string }
+function statusStyles(status) {
+  const s = String(status || 'available').toLowerCase()
+  if (s === 'occupied') {
+    return 'bg-neutral-900 text-white border-neutral-900'
+  }
+  if (s === 'reserved') {
+    return 'bg-neutral-200 text-neutral-900 border-neutral-400'
+  }
+  return 'bg-white text-neutral-700 border-neutral-200'
+}
 
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
-    return () => clearInterval(timer)
+export default function TablesPage() {
+  const navigate = useNavigate()
+  const authReady = useReceptionAuth()
+  const [tables, setTables] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [isBookModalOpen, setIsBookModalOpen] = useState(false)
+  const [notice, setNotice] = useState(null)
+
+  const applyTables = useCallback((list) => {
+    setTables(normalizeTablesFromApi(list))
   }, [])
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await apiFetch('/api/tables')
-        const list = Array.isArray(data.tables) ? data.tables : []
-        const byId = new Map()
-        list.forEach(t => byId.set(t.id, { id: t.id, ...t }))
-        const next = Array.from({ length: 10 }).map((_, i) => {
-          const id = `T${i + 1}`
-          return byId.get(id) || { id, status: 'available' }
-        })
-        setTables(next)
-      } catch (e) {
-        console.error('Tables initial load error:', e)
+  const loadTables = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await apiFetch('/api/tables')
+      applyTables(data.tables)
+    } catch (e) {
+      console.error('Tables load error:', e)
+      const msg = String(e?.message || '')
+      if (msg.includes('401')) {
+        navigate('/login', { replace: true })
+      } else {
+        setNotice({ type: 'error', message: 'Could not load tables. Check backend and refresh.' })
       }
+    } finally {
+      setLoading(false)
     }
-    load()
+  }, [applyTables, navigate])
 
-    const s = io()
-    s.on('tables:update', (tablesPayload) => {
-      const list = Array.isArray(tablesPayload) ? tablesPayload : []
-      const byId = new Map()
-      list.forEach(t => byId.set(t.id, { id: t.id, ...t }))
-      const next = Array.from({ length: 10 }).map((_, i) => {
-        const id = `T${i + 1}`
-        return byId.get(id) || { id, status: 'available' }
-      })
-      setTables(next)
+  useEffect(() => {
+    if (!authReady) return undefined
+
+    loadTables()
+
+    const socket = io({ transports: ['websocket', 'polling'] })
+    socket.on('tables:update', (payload) => {
+      applyTables(payload)
+      setLoading(false)
+    })
+    socket.on('connect', () => {
+      loadTables()
     })
 
+    const onRefresh = () => loadTables()
+    window.addEventListener('reception:tables-refresh', onRefresh)
+
     return () => {
-      s.close()
+      socket.close()
+      window.removeEventListener('reception:tables-refresh', onRefresh)
     }
-  }, [])
+  }, [authReady, loadTables, applyTables])
 
   const counts = useMemo(() => {
     const list = Array.isArray(tables) ? tables : []
-    const available = list.filter(t => (t.status || 'available') === 'available').length
-    const reserved = list.filter(t => t.status === 'reserved').length
-    const occupied = list.filter(t => t.status === 'occupied').length
-    return { total: list.length, available, reserved, occupied }
+    return {
+      total: list.length,
+      available: list.filter((t) => (t.status || 'available') === 'available').length,
+      reserved: list.filter((t) => t.status === 'reserved').length,
+      occupied: list.filter((t) => t.status === 'occupied').length,
+    }
   }, [tables])
 
   const bookTable = async ({ tableId, name, phone }) => {
@@ -73,6 +99,9 @@ export default function TablesPage() {
       })
       setIsBookModalOpen(false)
       setNotice({ type: 'success', message: `Table ${tableId} booked.` })
+      await loadTables()
+      refreshReceptionTables()
+      refreshReceptionNotifications()
     } catch (e) {
       console.error('Failed to book table:', e)
       setNotice({ type: 'error', message: 'Failed to book table. Please try again.' })
@@ -92,6 +121,9 @@ export default function TablesPage() {
         }),
       })
       setNotice({ type: 'success', message: `Table ${tableId} is now available.` })
+      await loadTables()
+      refreshReceptionTables()
+      refreshReceptionNotifications()
     } catch (e) {
       console.error('Failed to mark table available:', e)
       setNotice({ type: 'error', message: 'Failed to update table. Please try again.' })
@@ -99,90 +131,83 @@ export default function TablesPage() {
   }
 
   return (
-    <div className="min-h-screen grid grid-cols-1 lg:grid-cols-[16rem_1fr] bg-slate-50">
+    <div className="min-h-screen grid grid-cols-1 lg:grid-cols-[14rem_1fr] bg-neutral-100">
       <Sidebar />
       <div className="flex flex-col min-w-0">
-        <Header
-          title={<span>Reception <span className="text-rose-700">Tables</span></span>}
-          currentTime={currentTime}
-        />
+        <Header title="Tables" showUserMenu showNotifications />
 
-        <main className="p-6">
-          {notice?.message && (
-            <div
-              className={`mb-4 rounded-xl border px-4 py-3 text-sm ${
-                notice.type === 'success'
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                  : 'border-slate-200 bg-white text-slate-700'
-              }`}
-              role="status"
+        <main className="p-2 md:p-3">
+          <PageNotice message={notice?.message} />
+
+          <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white px-2 py-1.5 text-[11px] text-neutral-600">
+            <span>
+              <span className="font-semibold text-neutral-900">{counts.total}</span> tables
+            </span>
+            <span className="text-neutral-300">|</span>
+            <span>{counts.available} available</span>
+            <span className="text-neutral-300">·</span>
+            <span>{counts.reserved} reserved</span>
+            <span className="text-neutral-300">·</span>
+            <span>{counts.occupied} occupied</span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 text-[11px] rounded-md ml-auto"
+              onClick={() => setIsBookModalOpen(true)}
+              disabled={loading || tables.length === 0}
             >
-              {notice.message}
-            </div>
-          )}
-          <div className="flex items-center justify-between mb-4">
-            <div className="text-sm font-semibold text-slate-500">Overview</div>
-            <Button variant="outline" onClick={() => setIsBookModalOpen(true)}>Book Table</Button>
+              Book table
+            </Button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-              <div className="text-xs font-semibold text-slate-500">Total Tables</div>
-              <div className="mt-1 text-3xl font-bold text-slate-900">{counts.total}</div>
-            </div>
-            <div className="bg-white rounded-2xl border border-emerald-200 shadow-sm p-5">
-              <div className="text-xs font-semibold text-emerald-700">Available</div>
-              <div className="mt-1 text-3xl font-bold text-emerald-800">{counts.available}</div>
-            </div>
-            <div className="bg-white rounded-2xl border border-amber-200 shadow-sm p-5">
-              <div className="text-xs font-semibold text-amber-700">Reserved</div>
-              <div className="mt-1 text-3xl font-bold text-amber-800">{counts.reserved}</div>
-            </div>
-            <div className="bg-white rounded-2xl border border-rose-200 shadow-sm p-5">
-              <div className="text-xs font-semibold text-rose-700">Occupied</div>
-              <div className="mt-1 text-3xl font-bold text-rose-800">{counts.occupied}</div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-            <div className="text-sm font-bold text-slate-800 mb-4">Table Status</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-              {tables.map(t => {
-                const status = t.status || 'available'
-                const badgeClass =
-                  status === 'available'
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                    : status === 'reserved'
-                    ? 'bg-amber-50 text-amber-800 border-amber-200'
-                    : 'bg-rose-50 text-rose-800 border-rose-200'
-
-                return (
-                  <div key={t.id} className="rounded-2xl border border-slate-200 p-4">
-                    <div className="flex items-center justify-between">
-                      <div className="text-lg font-extrabold text-slate-900">{t.id}</div>
-                      <div className={`px-2 py-1 text-xs font-bold uppercase rounded-lg border ${badgeClass}`}>{status}</div>
-                    </div>
-
-                    {(t.reservedBy || t.phone) && (
-                      <div className="mt-2 text-xs text-slate-500">
-                        <div className="truncate">{t.reservedBy || 'Reserved'}</div>
-                        <div className="truncate">{t.phone || ''}</div>
+          <div className="rounded-lg border border-neutral-200 bg-white p-2 md:p-3">
+            {loading && tables.length === 0 ? (
+              <p className="py-10 text-center text-sm text-neutral-500">Loading tables…</p>
+            ) : tables.length === 0 ? (
+              <p className="py-10 text-center text-sm text-neutral-500">
+                No tables in the system. Add tables in admin or run seed data.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                {tables.map((t) => {
+                  const status = t.status || 'available'
+                  return (
+                    <div
+                      key={t.id}
+                      className="rounded-lg border border-neutral-200 p-2.5 flex flex-col min-h-[5.5rem]"
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-sm font-semibold text-neutral-900">{t.id}</span>
+                        <span
+                          className={`px-1.5 py-0.5 text-[10px] font-medium uppercase rounded border ${statusStyles(status)}`}
+                        >
+                          {status}
+                        </span>
                       </div>
-                    )}
-
-                    {status !== 'available' && (
-                      <button
-                        type="button"
-                        className="mt-3 w-full px-4 py-2 rounded-xl text-sm font-semibold border border-slate-200 text-slate-600 hover:bg-slate-50"
-                        onClick={() => markAvailable(t.id)}
-                      >
-                        Mark Available
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+                      {(t.reservedBy || t.phone || t.currentOrderId) && (
+                        <div className="mt-1.5 text-[10px] text-neutral-500 space-y-0.5 flex-1">
+                          {t.reservedBy && <div className="truncate">{t.reservedBy}</div>}
+                          {t.phone && <div className="truncate">{t.phone}</div>}
+                          {t.currentOrderId && (
+                            <div className="truncate">Order #{t.currentOrderId}</div>
+                          )}
+                        </div>
+                      )}
+                      {status !== 'available' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 h-7 w-full text-[11px] rounded-md"
+                          onClick={() => markAvailable(t.id)}
+                        >
+                          Mark available
+                        </Button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         </main>
 
@@ -196,4 +221,3 @@ export default function TablesPage() {
     </div>
   )
 }
-
