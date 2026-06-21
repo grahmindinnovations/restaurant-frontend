@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { LogOut } from 'lucide-react'
+import { signOut } from 'firebase/auth'
 import { Button } from '../components/ui/button'
 import { Card, CardContent } from '../components/ui/card'
 import { createSocket } from '../services/socket'
 import { apiFetch } from '../services/api'
+import { auth } from '../services/firebase'
+import { clearActiveRole } from '../auth/config/activeRoleStorage'
 
 function formatOrderTime(value) {
   if (!value) return '—'
@@ -41,6 +46,7 @@ function kitchenLines(order) {
 }
 
 export default function KitchenDisplay() {
+  const navigate = useNavigate()
   const [menu, setMenu] = useState([])
   const [orders, setOrders] = useState([])
   const [view, setView] = useState('live-orders')
@@ -136,6 +142,16 @@ export default function KitchenDisplay() {
 
   const kitchenItems = menu.filter((m) => m.destination === 'kitchen' || !m.destination)
 
+  const handleLogout = async () => {
+    try {
+      clearActiveRole()
+      if (auth) await signOut(auth)
+    } catch (err) {
+      console.error('Logout failed:', err)
+    }
+    navigate('/login', { replace: true })
+  }
+
   return (
     <div className="min-h-screen bg-neutral-100">
       <header className="border-b border-neutral-200 bg-white px-4 py-3">
@@ -146,7 +162,7 @@ export default function KitchenDisplay() {
               {orders.length} KOT{orders.length === 1 ? '' : 's'} waiting
             </p>
           </div>
-          <div className="flex gap-1">
+          <div className="flex items-center gap-1">
             <Button
               variant={view === 'live-orders' ? 'default' : 'outline'}
               size="sm"
@@ -162,6 +178,15 @@ export default function KitchenDisplay() {
               onClick={() => setView('availability')}
             >
               Item availability
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs rounded-md gap-1.5 ml-1"
+              onClick={handleLogout}
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Logout
             </Button>
           </div>
         </div>
