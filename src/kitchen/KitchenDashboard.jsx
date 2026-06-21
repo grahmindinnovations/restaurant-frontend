@@ -13,7 +13,7 @@ import AddDishModal from './modals/AddDishModal'
 import EditDishModal from './modals/EditDishModal'
 import ScheduleModal from './modals/ScheduleModal'
 import { apiFetch } from '../services/api'
-import { io } from 'socket.io-client'
+import { createSocket } from '../services/socket'
 
 const Container = styled.div(() => [
   tw`flex h-screen bg-slate-50 overflow-hidden font-sans text-slate-800`,
@@ -928,7 +928,7 @@ export default function KitchenDashboard() {
 
     load()
 
-    const s = io()
+    const s = createSocket()
     s.on('menu:update', (menu) => {
       setMenuItems(Array.isArray(menu) ? menu : [])
     })

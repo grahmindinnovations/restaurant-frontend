@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent } from '../components/ui/card'
-import { io } from 'socket.io-client'
+import { createSocket } from '../services/socket'
 import { apiFetch } from '../services/api'
 
 function formatOrderTime(value) {
@@ -61,7 +61,7 @@ export default function KitchenDisplay() {
       .then((d) => applyKotOrders(d.orders))
       .catch((err) => console.error('Error fetching orders:', err))
 
-    const socket = io()
+    const socket = createSocket()
     socket.on('menu:update', (next) => setMenu(normalizeMenu(next)))
     socket.on('orders:update', applyKotOrders)
 
@@ -97,6 +97,41 @@ export default function KitchenDisplay() {
     } finally {
       setFinishingId(null)
     }
+  }
+
+  const updateGuestLifecycle = async (orderId, guestLifecycle, estimatedMinutes) => {
+    if (!orderId) return
+    setFinishingId(orderId)
+    setNotice(null)
+    try {
+      await apiFetch(`/api/orders/${encodeURIComponent(orderId)}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          status: guestLifecycle === 'served' || guestLifecycle === 'bill_ready' ? 'billed' : 'kot',
+          guestLifecycle: guestLifecycle === 'served' ? 'bill_ready' : guestLifecycle,
+          estimatedMinutes,
+        }),
+      })
+      if (guestLifecycle === 'served' || guestLifecycle === 'bill_ready') {
+        setOrders((prev) => prev.filter((o) => o.id !== orderId))
+      }
+      setNotice(`Order #${orderId} → ${guestLifecycle}`)
+    } catch (err) {
+      console.error(err)
+      setNotice(`Failed to update order #${orderId}.`)
+    } finally {
+      setFinishingId(null)
+    }
+  }
+
+  const guestLifecycleAction = (order) => {
+    const lc = String(order.guestLifecycle || 'placed').toLowerCase()
+    if (lc === 'placed' || lc === 'received') {
+      return { label: 'Start preparing · 12 min', next: 'preparing', mins: 12 }
+    }
+    if (lc === 'preparing') return { label: 'Mark ready', next: 'ready' }
+    if (lc === 'ready') return { label: 'Mark served → bill guest', next: 'served' }
+    return null
   }
 
   const kitchenItems = menu.filter((m) => m.destination === 'kitchen' || !m.destination)
@@ -162,6 +197,12 @@ export default function KitchenDisplay() {
                       <div>
                         <span className="font-semibold text-neutral-900">#{order.id}</span>
                         <p className="text-[11px] text-neutral-500">{formatOrderTime(order.createdAt)}</p>
+                        {order.source === 'guest' && (
+                          <p className="text-[10px] font-semibold text-amber-800 mt-0.5">
+                            Guest · {String(order.guestLifecycle || 'placed')}
+                            {order.estimatedMinutes ? ` · ~${order.estimatedMinutes} min` : ''}
+                          </p>
+                        )}
                       </div>
                       <span className="text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded border border-neutral-300 bg-neutral-100 text-neutral-800">
                         {orderLabel(order)}
@@ -178,13 +219,26 @@ export default function KitchenDisplay() {
                         </li>
                       ))}
                     </ul>
-                    <Button
-                      className="w-full h-10 rounded-lg text-sm font-semibold"
-                      disabled={finishingId === order.id}
-                      onClick={() => finishOrder(order.id)}
-                    >
-                      {finishingId === order.id ? 'Completing…' : 'Complete'}
-                    </Button>
+                    {order.source === 'guest' && guestLifecycleAction(order) ? (
+                      <Button
+                        className="w-full h-10 rounded-lg text-sm font-semibold"
+                        disabled={finishingId === order.id}
+                        onClick={() => {
+                          const act = guestLifecycleAction(order)
+                          updateGuestLifecycle(order.id, act.next, act.mins)
+                        }}
+                      >
+                        {finishingId === order.id ? 'Updating…' : guestLifecycleAction(order).label}
+                      </Button>
+                    ) : (
+                      <Button
+                        className="w-full h-10 rounded-lg text-sm font-semibold"
+                        disabled={finishingId === order.id}
+                        onClick={() => finishOrder(order.id)}
+                      >
+                        {finishingId === order.id ? 'Completing…' : 'Complete'}
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               )

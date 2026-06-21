@@ -16,31 +16,26 @@ const ROLE_UI = {
     title: 'Admin',
     subtitle: 'Full System Access',
     icon: Shield,
-    tint: 'bg-rose-50 text-rose-700 border-rose-100',
   },
   manager: {
     title: 'Manager',
     subtitle: 'Inventory & Stock',
     icon: TrendingUp,
-    tint: 'bg-amber-50 text-amber-800 border-amber-100',
   },
   kitchen: {
     title: 'Kitchen',
     subtitle: 'KDS & Preparation',
     icon: ChefHat,
-    tint: 'bg-emerald-50 text-emerald-800 border-emerald-100',
   },
   reception: {
     title: 'Reception',
     subtitle: 'POS & Billing',
     icon: Monitor,
-    tint: 'bg-sky-50 text-sky-800 border-sky-100',
   },
   employee: {
     title: 'Employee',
     subtitle: 'Staff & Attendance',
     icon: ClipboardList,
-    tint: 'bg-violet-50 text-violet-800 border-violet-100',
   },
 }
 
@@ -64,7 +59,6 @@ function RoleSelectContent() {
             title: r,
             subtitle: '',
             icon: Shield,
-            tint: 'bg-slate-50 text-slate-800 border-slate-100',
           }),
         }))
         .sort((a, b) => a.title.localeCompare(b.title)),
@@ -85,11 +79,11 @@ function RoleSelectContent() {
 
   if (!loading && allowedRoles.length === 0) {
     return (
-      <div className="min-h-screen bg-slate-50 p-6 flex items-center justify-center">
-        <Card className="max-w-md w-full rounded-2xl border border-slate-200 shadow-sm">
+      <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+        <Card className="max-w-md w-full rounded-2xl border border-border shadow-sm">
           <CardContent className="p-6 space-y-3 text-center">
-            <p className="text-sm text-slate-600">
-              No roles are assigned to <span className="font-semibold">{user?.email}</span>. Ask
+            <p className="text-sm text-muted-foreground">
+              No roles are assigned to <span className="font-semibold text-foreground">{user?.email}</span>. Ask
               your admin to set <code className="text-xs">allowed_email</code> in Firestore roles.
             </p>
             <Button variant="outline" className="w-full rounded-xl" onClick={logout}>
@@ -102,21 +96,27 @@ function RoleSelectContent() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
+    <div className="min-h-screen bg-background p-6">
       <div className="mx-auto max-w-3xl space-y-4">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Select a role</h1>
-            <p className="text-sm text-slate-500">
-              Signed in as <span className="font-semibold text-slate-700">{user?.email}</span>
-            </p>
+        <div className="auth-hero rounded-2xl p-6 text-primary-foreground shadow-lg">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold">Select a role</h1>
+              <p className="mt-1 text-sm text-white/80">
+                Signed in as <span className="font-semibold text-white">{user?.email}</span>
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              className="rounded-xl border-white/30 bg-white/10 text-white hover:bg-white/20"
+              onClick={logout}
+            >
+              Sign out
+            </Button>
           </div>
-          <Button variant="outline" className="rounded-xl" onClick={logout}>
-            Sign out
-          </Button>
         </div>
 
-        <Card className="rounded-2xl border border-slate-200 shadow-sm">
+        <Card className="rounded-2xl border border-border shadow-sm bg-card">
           <CardHeader>
             <CardTitle>Available roles</CardTitle>
           </CardHeader>
@@ -132,17 +132,15 @@ function RoleSelectContent() {
                       setActiveRole(r.id)
                       navigate(routeForRole(r.id), { replace: true })
                     }}
-                    className="text-left rounded-2xl border border-slate-200 bg-white p-4 hover:bg-slate-50 transition"
+                    className="text-left rounded-2xl border border-border bg-card p-4 hover:bg-accent transition"
                   >
                     <div className="flex items-start gap-3">
-                      <div
-                        className={`h-10 w-10 rounded-xl border flex items-center justify-center ${r.tint}`}
-                      >
+                      <div className="h-10 w-10 rounded-xl border border-border bg-secondary flex items-center justify-center text-primary">
                         <Icon className="h-5 w-5" />
                       </div>
                       <div className="min-w-0">
-                        <div className="font-bold text-slate-900">{r.title}</div>
-                        <div className="text-xs text-slate-500">{r.subtitle}</div>
+                        <div className="font-bold text-foreground">{r.title}</div>
+                        <div className="text-xs text-muted-foreground">{r.subtitle}</div>
                       </div>
                     </div>
                   </button>

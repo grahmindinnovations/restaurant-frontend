@@ -11,7 +11,7 @@ import MenuGrid from '../menu/MenuGrid'
 import OrderPanel from '../order/OrderPanel'
 import BookTableModal from '../modals/BookTableModal'
 import { apiFetch } from '../../services/api'
-import { io } from 'socket.io-client'
+import { createSocket } from '../../services/socket'
 import { printBill } from '../utils/printBill'
 import PageNotice from '../components/PageNotice'
 import { refreshReceptionNotifications } from '../utils/refreshNotifications'
@@ -195,7 +195,7 @@ export default function POSPage(){
         loadInitial()
       }
       if (!socket) {
-        socket = io()
+        socket = createSocket()
         socket.on('menu:update', (menu) => {
 
           const list = Array.isArray(menu) ? menu : []

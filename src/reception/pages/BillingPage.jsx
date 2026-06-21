@@ -6,7 +6,7 @@ import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import Modal from '../../components/common/Modal'
 import { Button as FormButton } from '../../components/common/Forms'
-import { io } from 'socket.io-client'
+import { createSocket } from '../../services/socket'
 import { apiFetch } from '../../services/api'
 import { printBill } from '../utils/printBill'
 import PageNotice from '../components/PageNotice'
@@ -75,7 +75,7 @@ export default function BillingPage() {
 
     loadOrders()
 
-    const socket = io()
+    const socket = createSocket()
     socket.on('orders:update', (updated) => {
       applyOrders(updated)
       setLoading(false)

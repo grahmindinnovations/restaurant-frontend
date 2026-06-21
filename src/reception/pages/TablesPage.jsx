@@ -10,7 +10,7 @@ import { refreshReceptionTables } from '../utils/refreshTables'
 import { normalizeTablesFromApi } from '../utils/normalizeTables'
 import { useReceptionAuth } from '../hooks/useReceptionAuth'
 import { apiFetch } from '../../services/api'
-import { io } from 'socket.io-client'
+import { createSocket } from '../../services/socket'
 
 function statusStyles(status) {
   const s = String(status || 'available').toLowerCase()
@@ -58,7 +58,7 @@ export default function TablesPage() {
 
     loadTables()
 
-    const socket = io({ transports: ['websocket', 'polling'] })
+    const socket = createSocket()
     socket.on('tables:update', (payload) => {
       applyTables(payload)
       setLoading(false)

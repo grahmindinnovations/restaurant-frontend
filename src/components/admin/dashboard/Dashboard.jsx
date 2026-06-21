@@ -5,6 +5,7 @@ import SalesCharts from './SalesCharts'
 import GlobalSearch from './GlobalSearch'
 import QuickActions from './QuickActions'
 import NotificationCenter from './NotificationCenter'
+import TablePaymentBoard from './TablePaymentBoard'
 
 export default function Dashboard() {
   const [metrics, setMetrics] = useState(null)
@@ -46,6 +47,7 @@ export default function Dashboard() {
           <GlobalSearch />
         </div>
         <div className="w-full xl:w-72 shrink-0 space-y-3">
+          <TablePaymentBoard />
           <NotificationCenter />
           <QuickActions />
         </div>

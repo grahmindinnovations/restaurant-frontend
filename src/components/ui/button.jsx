@@ -3,11 +3,11 @@ import { Slot } from '@radix-ui/react-slot'
 import { cn } from '../../lib/utils'
 
 const buttonVariants = {
-  default: 'bg-gray-900 text-white hover:bg-gray-800',
+  default: 'bg-primary text-primary-foreground hover:brightness-110',
   primary: 'bg-[hsl(var(--primary))] text-[hsl(var(--primary-foreground))] hover:brightness-110',
   secondary: 'bg-[hsl(var(--secondary))] text-[hsl(var(--secondary-foreground))] hover:brightness-110',
-  outline: 'border border-gray-300 hover:bg-gray-50',
-  ghost: 'hover:bg-gray-100'
+  outline: 'border border-border bg-card hover:bg-accent text-foreground',
+  ghost: 'hover:bg-accent text-foreground'
 }
 
 const sizes = {

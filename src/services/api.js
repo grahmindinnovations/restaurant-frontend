@@ -1,5 +1,6 @@
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from './firebase'
+import { getApiBaseUrl } from '../config/apiBase'
 
 /** Wait until Firebase restores the signed-in user (e.g. after refresh). */
 export function waitForAuthUser(timeoutMs = 8000) {
@@ -46,7 +47,7 @@ function sleep(ms) {
  * Uses plain fetch — no auth required.
  */
 export async function waitForBackend(maxWaitMs = 15000) {
-  const base = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL || '')
+  const base = getApiBaseUrl()
   const url = `${base}/api/health`
   const start = Date.now()
 
@@ -63,7 +64,7 @@ export async function waitForBackend(maxWaitMs = 15000) {
 }
 
 export async function apiFetch(path, options = {}) {
-  const base = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_BASE_URL || '')
+  const base = getApiBaseUrl()
   const url = path.startsWith('http') ? path : `${base}${path}`
 
   const method = String(options.method || 'GET').toUpperCase()

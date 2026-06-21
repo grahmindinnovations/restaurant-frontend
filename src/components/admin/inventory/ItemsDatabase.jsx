@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { io } from 'socket.io-client'
+import { createSocket } from '../../../services/socket'
 import { Plus, Pencil, Trash2, Upload } from 'lucide-react'
 import { apiFetch } from '../../../services/api'
 import { uploadMenuImage } from '../../../services/uploadMenuImage'
@@ -89,7 +89,7 @@ export default function ItemsDatabase() {
 
   useEffect(() => {
     load()
-    const socket = io()
+    const socket = createSocket()
     socket.on('menu:update', (menu) => {
       const list = Array.isArray(menu) ? menu.map(normalizeItem) : []
       setItems(list)

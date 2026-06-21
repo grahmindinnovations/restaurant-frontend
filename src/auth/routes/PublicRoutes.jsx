@@ -1,6 +1,8 @@
 import { lazy } from 'react'
 import { Route, Navigate } from 'react-router-dom'
 
+const LandingPage = lazy(() => import('../../landing/LandingPage'))
+const GuestTablePage = lazy(() => import('../../guest/GuestTablePage'))
 const LoginPage = lazy(() => import('../pages/LoginPage'))
 const RoleSelectPage = lazy(() => import('../pages/RoleSelectPage'))
 const AccessDeniedPage = lazy(() => import('../pages/AccessDeniedPage'))
@@ -10,7 +12,8 @@ const AccessDeniedPage = lazy(() => import('../pages/AccessDeniedPage'))
  */
 export function getPublicRoutes() {
   return [
-    <Route key="/" path="/" element={<Navigate to="/login" replace />} />,
+    <Route key="/" path="/" element={<LandingPage />} />,
+    <Route key="/table/:tableId" path="/table/:tableId" element={<GuestTablePage />} />,
     <Route key="/login" path="/login" element={<LoginPage />} />,
     <Route key="/select-role" path="/select-role" element={<RoleSelectPage />} />,
     <Route key="/access-denied" path="/access-denied" element={<AccessDeniedPage />} />,
