@@ -294,9 +294,15 @@
 }
 
 /* ── Scene 2 & 3: phone in hand (no table) ── */
-.fp-hand-hold {
-  position: relative;
+.fp-hand-decor {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
   transform-style: preserve-3d;
+  pointer-events: none;
+  z-index: 1;
   transition: transform 0.12s ease-out;
 }
 
@@ -304,7 +310,7 @@
   position: absolute;
   z-index: 0;
   bottom: -0.75rem;
-  left: -2rem;
+  left: calc(50% - 6.5rem);
   width: 7rem;
   height: 8rem;
   background: linear-gradient(160deg, #d4b896 0%, #a8846a 55%, #8b6d4f 100%);
@@ -315,8 +321,8 @@
 
 .fp-hand-thumb {
   position: absolute;
-  z-index: 3;
-  right: -0.75rem;
+  z-index: 0;
+  right: calc(50% - 7.5rem);
   bottom: 2rem;
   width: 1.65rem;
   height: 3.25rem;
@@ -328,13 +334,25 @@
 .fp-hand-phone {
   position: relative;
   z-index: 2;
-  transform: scale(0.94);
-  transform-origin: top center;
+  transition: transform 0.12s ease-out;
 }
 
 .fp-hand-phone .phone-mockup-shell {
   width: min(12.75rem, 54vw);
   box-shadow: 0 32px 64px rgba(30, 20, 10, 0.35);
+}
+
+.fp-hand-phone .phone-mockup-content {
+  animation: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  padding: 0.45rem 0.65rem 0.25rem;
+}
+
+.fp-hand-phone .phone-mockup-screen,
+.fp-hand-phone .phone-mockup-status,
+.fp-hand-phone .phone-mockup-tabbar {
+  -webkit-font-smoothing: antialiased;
 }
 
 .fp-hand-phone .phone-mock-eta-clock {
@@ -367,10 +385,6 @@
 .fp-hand-phone .phone-mock-section-title {
   margin: 0.15rem 0 0.35rem;
   font-size: 0.62rem;
-}
-
-.fp-hand-phone .phone-mockup-content {
-  padding: 0.45rem 0.65rem 0.25rem;
 }
 
 .fp-hand-phone .phone-mockup-tabbar {
@@ -485,7 +499,7 @@
   }
 
   .fp-hand-phone {
-    transform: scale(1);
+    /* no scale — keeps text sharp */
   }
 
   .fp-hand-phone .phone-mockup-shell {
@@ -653,8 +667,8 @@
     min-height: 18rem;
   }
 
-  .fp-hand-phone {
-    transform: scale(0.88);
+  .fp-hand-phone .phone-mockup-shell {
+    width: min(11.5rem, 50vw);
   }
 
   .fp-qr-image {

@@ -204,12 +204,23 @@ export default function ScrollFirstPersonOrder() {
                 }}
               >
                 <div
-                  className="fp-hand-hold"
-                  style={{ transform: `rotateY(${lerp(-6, 10, progress) + mouse.x * 6}deg) rotateX(${lerp(10, 6, progress) + mouse.y * -4}deg)` }}
+                  className="fp-hand-decor"
+                  style={{
+                    transform: `rotateY(${lerp(-4, 6, progress) + mouse.x * 3}deg) rotateX(${lerp(6, 4, progress) + mouse.y * -2}deg)`,
+                  }}
+                  aria-hidden
                 >
-                  <div className="fp-hand-palm" aria-hidden />
-                  <div className="fp-hand-phone">
-                    <PhoneMockup
+                  <div className="fp-hand-palm" />
+                  <div className="fp-hand-thumb" />
+                </div>
+
+                <div
+                  className="fp-hand-phone"
+                  style={{
+                    transform: `translateX(${mouse.x * 6}px) translateY(${mouse.y * 4}px)`,
+                  }}
+                >
+                  <PhoneMockup
                       screenIndex={screenIndex}
                       interactive={phoneInteractive}
                       onScreenChange={setScreenIndex}
@@ -221,13 +232,11 @@ export default function ScrollFirstPersonOrder() {
                       onAddExtra={handleAddExtra}
                       cartLines={cartLines}
                       extraAdded={extraAdded}
-                      showOrdersToast={scene === 'orders'}
+                      showOrdersToast={false}
                       showBigTimer={scene === 'track'}
                       orderMoreMode={scene === 'order_more'}
                       showWhatsAppBillOpen={scene === 'whatsapp_bill'}
                     />
-                  </div>
-                  <div className="fp-hand-thumb" aria-hidden />
                 </div>
 
                 {scene === 'orders' && (
